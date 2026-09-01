@@ -1,0 +1,1435 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#2D6A8E">
+<meta name="description" content="تحدي 30 يوم بين محمد ورسل — مهام يومية موزونة ومزامنة حية عبر Firebase وإمكانية تعديل المهام من أي مكان.">
+<title>محمد ضد رسل | تحدي الـ 30 يوم</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@300;400;600;700&display=swap">
+<!-- MQTT.js for instant zero-config real-time synchronization -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.5.0/mqtt.min.js"></script>
+<style>
+:root{
+  --ground:#ECEEF1; --surface:#FFFFFF; --surface-2:#F4F6F8; --line:#D6DAE0; --line-soft:#E4E7EC;
+  --ink:#171A1F; --ink-2:#3D444F; --muted:#697180;
+  --p1:#2D6A8E; --p1-soft:#E2EDF4; --p1-line:#A9C8DB;
+  --p2:#9E3B62; --p2-soft:#F7E6ED; --p2-line:#DCAFC2;
+  --good:#2E8B57; --warn:#C67A1B; --bad:#D32F2F; --dim:#9AA2AE;
+  --shadow:0 1px 3px rgba(23,26,31,.08),0 8px 24px rgba(23,26,31,.06);
+  --r:16px; --r-sm:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#14171C; --surface:#1C2027; --surface-2:#232833; --line:#333A46; --line-soft:#282E38;
+    --ink:#E8EAEE; --ink-2:#C2C8D2; --muted:#8A93A1;
+    --p1:#6BABD0; --p1-soft:#1B2B36; --p1-line:#2F4E62;
+    --p2:#DB88A8; --p2-soft:#2E1D25; --p2-line:#5A3243;
+    --good:#67B189; --warn:#E5A93C; --bad:#EF5350; --dim:#666E7C;
+    --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#14171C; --surface:#1C2027; --surface-2:#232833; --line:#333A46; --line-soft:#282E38;
+  --ink:#E8EAEE; --ink-2:#C2C8D2; --muted:#8A93A1;
+  --p1:#6BABD0; --p1-soft:#1B2B36; --p1-line:#2F4E62;
+  --p2:#DB88A8; --p2-soft:#2E1D25; --p2-line:#5A3243;
+  --good:#67B189; --warn:#E5A93C; --bad:#EF5350; --dim:#666E7C;
+  --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+:root[data-theme="light"]{
+  --ground:#ECEEF1; --surface:#FFFFFF; --surface-2:#F4F6F8; --line:#D6DAE0; --line-soft:#E4E7EC;
+  --ink:#171A1F; --ink-2:#3D444F; --muted:#697180;
+  --p1:#2D6A8E; --p1-soft:#E2EDF4; --p1-line:#A9C8DB;
+  --p2:#9E3B62; --p2-soft:#F7E6ED; --p2-line:#DCAFC2;
+  --good:#2E8B57; --warn:#C67A1B; --bad:#D32F2F; --dim:#9AA2AE;
+  --shadow:0 1px 3px rgba(23,26,31,.08),0 8px 24px rgba(23,26,31,.06);
+}
+
+*{box-sizing:border-box}
+body{
+  direction:rtl; margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;
+  font-size:15px; line-height:1.6; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px;display:flex;flex-direction:column;gap:20px}
+
+/* ---------- masthead ---------- */
+.masthead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  padding-bottom:14px;border-bottom:2px solid var(--ink)}
+.brand{font-family:"Readex Pro","IBM Plex Sans Arabic",sans-serif;font-weight:600;font-size:clamp(26px,4.4vw,38px);
+  line-height:1.1;letter-spacing:-.01em;text-wrap:balance}
+.brand span{color:var(--muted);font-weight:300}
+.tagline{color:var(--muted);font-size:13.5px;margin-top:4px}
+.header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+.sync{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:6px 14px;cursor:pointer;
+  transition:all .15s ease;user-select:none}
+.sync:hover{border-color:var(--muted);transform:translateY(-1px)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none;transition:background .2s}
+.sync.live .dot{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 25%,transparent)}
+.sync.local .dot{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 25%,transparent)}
+.sync.err .dot{background:var(--bad)}
+
+.icon-btn{background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:6px 14px;
+  color:var(--ink);cursor:pointer;font-family:inherit;font-size:13px;display:inline-flex;align-items:center;
+  gap:6px;transition:all .15s ease}
+.icon-btn:hover{background:var(--surface-2);border-color:var(--muted)}
+
+/* ---------- duel score card ---------- */
+.duel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  padding:20px;display:grid;gap:16px}
+.duel-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}
+.side{display:flex;flex-direction:column;gap:2px;min-width:0}
+.side.b{text-align:left}
+.pname{font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:6px;
+  background:none;border:0;padding:0;cursor:pointer;font-family:inherit;color:inherit;max-width:100%}
+.side.b .pname{align-self:flex-end}
+.pname .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pname .pen{opacity:0.6;font-size:11px;color:var(--muted);background:var(--surface-2);padding:2px 6px;border-radius:6px;border:1px solid var(--line-soft);transition:opacity .15s}
+.pname:hover .pen,.pname:focus-visible .pen{opacity:1}
+.a .pname{color:var(--p1)} .b .pname{color:var(--p2)}
+.big{font-family:"Readex Pro",sans-serif;font-weight:600;font-size:clamp(38px,7.5vw,60px);line-height:1;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.a .big{color:var(--p1)} .b .big{color:var(--p2)}
+.big em{font-style:normal;font-size:.42em;font-weight:400;color:var(--muted);margin-inline-start:2px}
+.meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.vs{font-family:"Readex Pro",sans-serif;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.16em;
+  border:1px solid var(--line);border-radius:99px;padding:4px 10px}
+
+/* tug of war */
+.tug{position:relative;height:14px;border-radius:99px;overflow:hidden;background:var(--surface-2);
+  border:1px solid var(--line-soft);display:flex}
+.tug .f1{background:var(--p1);transition:width .5s cubic-bezier(.4,0,.2,1)}
+.tug .f2{background:var(--p2);transition:width .5s cubic-bezier(.4,0,.2,1);margin-inline-start:auto}
+.tug .mid{position:absolute;inset-block:-3px;inset-inline-start:50%;width:2px;background:var(--ink);opacity:.35}
+.verdict{text-align:center;font-size:14px;color:var(--ink-2)}
+.verdict b{font-weight:600}
+
+.statline{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);
+  border-top:1px dashed var(--line);padding-top:12px;flex-wrap:wrap}
+.statline .g{display:flex;gap:14px}
+.statline .g.b{flex-direction:row-reverse}
+.statline b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ---------- sync & participant bar ---------- */
+.syncbar{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.whorow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.whorow .lbl{font-size:13.5px;color:var(--muted)}
+.mebtn{font-family:inherit;font-size:13.5px;font-weight:600;background:var(--surface-2);color:var(--ink-2);
+  border:1px solid var(--line);border-radius:99px;padding:6px 16px;cursor:pointer;
+  transition:all .15s ease}
+.mebtn:hover{border-color:var(--muted);background:var(--surface)}
+.mebtn.on{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+
+.quick-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---------- day navigation ---------- */
+.daynav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);padding:10px 16px;box-shadow:var(--shadow)}
+.nbtn{font-family:inherit;font-size:14px;background:var(--surface-2);color:var(--ink);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:8px 14px;cursor:pointer;transition:background .12s,border-color .12s}
+.nbtn:hover{background:var(--surface);border-color:var(--muted)}
+.nbtn[disabled]{opacity:.4;cursor:not-allowed}
+.nbtn.today{border-color:var(--ink);font-weight:600}
+.dtitle{font-family:"Readex Pro",sans-serif;font-size:18px;font-weight:600;margin-inline-end:auto;display:flex;align-items:center;gap:8px}
+.dtitle small{font-weight:400;color:var(--muted);font-size:13.5px}
+.badge{font-size:11.5px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.badge.now{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+
+/* ---------- boards ---------- */
+.boards{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  overflow:hidden;display:flex;flex-direction:column}
+.panel .head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px 16px;border-bottom:1px solid var(--line-soft)}
+.panel.a .head{background:var(--p1-soft);border-bottom-color:var(--p1-line)}
+.panel.b .head{background:var(--p2-soft);border-bottom-color:var(--p2-line)}
+.who{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+.panel.a .who{color:var(--p1)} .panel.b .who{color:var(--p2)}
+.pct{font-family:"Readex Pro",sans-serif;font-weight:600;font-size:20px;font-variant-numeric:tabular-nums;
+  display:flex;align-items:baseline;gap:7px}
+.panel.a .pct{color:var(--p1)} .panel.b .pct{color:var(--p2)}
+.pct small{font-size:11.5px;font-weight:400;color:var(--muted);white-space:nowrap}
+
+.panel-actions{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--surface-2);border-bottom:1px solid var(--line-soft)}
+.edit-tasks-btn{font-family:inherit;font-size:12px;font-weight:600;background:var(--surface);color:var(--ink-2);
+  border:1px solid var(--line);border-radius:6px;padding:5px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.edit-tasks-btn:hover{background:var(--surface-2);border-color:var(--muted)}
+
+.tasks{list-style:none;margin:0;padding:0;min-height:120px}
+.tasks-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px}
+.task{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;
+  padding:13px 16px;border-bottom:1px solid var(--line-soft);cursor:pointer;
+  transition:background .12s;position:relative;user-select:none}
+.task:last-child{border-bottom:0}
+.task:hover{background:var(--surface-2)}
+.task:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.box{width:22px;height:22px;border-radius:6px;border:2px solid var(--line);background:var(--surface);
+  flex:none;margin-top:2px;display:grid;place-items:center;transition:background .15s,border-color .15s}
+.box svg{width:13px;height:13px;opacity:0;transform:scale(.6);transition:opacity .15s,transform .15s;
+  stroke:var(--surface);stroke-width:3.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.task.done .box svg{opacity:1;transform:scale(1)}
+.panel.a .task.done .box{background:var(--p1);border-color:var(--p1)}
+.panel.b .task.done .box{background:var(--p2);border-color:var(--p2)}
+.tbody{display:flex;flex-direction:column;min-width:0}
+.tlabel{display:block;font-weight:600;font-size:14.5px;line-height:1.4}
+.task.done .tlabel{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1.5px}
+.tsub{display:block;font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:2px}
+.wchip{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:5px;white-space:nowrap;
+  border:1px solid var(--line);color:var(--muted);background:var(--surface);margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.wchip.w3{border-color:var(--warn);color:var(--warn)}
+.wchip.w2{border-color:var(--line);color:var(--ink-2)}
+.panel .foot{padding:11px 16px;background:var(--surface-2);border-top:1px solid var(--line-soft);
+  font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:10px}
+.panel .foot b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ---------- 30-day timeline strip ---------- */
+.strips{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:18px}
+.strips-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.strips h2{font-family:"Readex Pro",sans-serif;font-size:16px;font-weight:600;margin:0}
+.strips p.note{margin:0 0 16px;font-size:12.5px;color:var(--muted)}
+.striprow{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.striplab{width:74px;flex:none;font-size:12.5px;font-weight:600;text-align:end;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.striprow.a .striplab{color:var(--p1)} .striprow.b .striplab{color:var(--p2)}
+.strip{display:flex;gap:3px;flex:1;min-width:0;overflow-x:auto;padding-bottom:2px}
+.cellbtn{flex:1 1 0;min-width:14px;height:40px;border:0;background:none;padding:0;cursor:pointer;
+  display:flex;flex-direction:column;justify-content:flex-end;border-radius:3px}
+.cellbtn:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.cell{width:100%;background:var(--surface-2);border-radius:3px;min-height:3px;
+  transition:height .3s,background .2s}
+.striprow.a .cell{background:var(--p1)} .striprow.b .cell{background:var(--p2)}
+.cellbtn.empty .cell{background:var(--line-soft)}
+.cellbtn.future .cell{background:var(--line-soft);opacity:.4}
+.cellbtn.sel{background:var(--surface-2);box-shadow:inset 0 0 0 1.5px var(--ink)}
+.axis{display:flex;gap:3px;margin-inline-start:86px;font-size:9.5px;color:var(--dim);
+  font-variant-numeric:tabular-nums}
+.axis span{flex:1 1 0;min-width:14px;text-align:center}
+
+/* ---------- rules section ---------- */
+.rules{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;box-shadow:var(--shadow)}
+.rules h2{font-family:"Readex Pro",sans-serif;font-size:16px;font-weight:600;margin:0 0 12px}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
+.rcard{border:1px solid var(--line-soft);border-radius:var(--r-sm);padding:13px;background:var(--surface-2)}
+.rcard h3{margin:0 0 5px;font-size:13px;font-weight:600;color:var(--ink)}
+.rcard p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.65}
+.rcard b{color:var(--ink-2);font-weight:600}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;inset-block-end:24px;inset-inline-start:50%;transform:translateX(50%) translateY(140%);
+  background:var(--ink);color:var(--ground);padding:10px 22px;border-radius:99px;font-size:13.5px;font-weight:500;
+  transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:100;box-shadow:var(--shadow);pointer-events:none}
+.toast.show{transform:translateX(50%) translateY(0)}
+
+/* ---------- modals (Firebase & Task Editor) ---------- */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+  z-index:90;display:grid;place-items:center;padding:16px;overflow-y:auto;opacity:0;pointer-events:none;
+  transition:opacity .2s ease}
+.modal-overlay.open{opacity:1;pointer-events:auto}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  width:100%;max-width:580px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;
+  transform:scale(.95);transition:transform .2s ease}
+.modal-overlay.open .modal{transform:scale(1)}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.modal-head h3{margin:0;font-size:17px;font-weight:600;font-family:"Readex Pro",sans-serif}
+.modal-close{background:none;border:0;font-size:20px;color:var(--muted);cursor:pointer;padding:4px;line-height:1}
+.modal-body{padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--line-soft);background:var(--surface-2);display:flex;justify-content:flex-end;gap:10px}
+
+/* form controls */
+.fgroup{display:flex;flex-direction:column;gap:6px}
+.fgroup label{font-size:12.5px;font-weight:600;color:var(--muted)}
+.finput,.fselect,.ftextarea{font-family:inherit;font-size:14px;background:var(--surface-2);color:var(--ink);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 12px;direction:rtl}
+.ftextarea{min-height:75px;resize:vertical}
+.finput:focus,.fselect:focus,.ftextarea:focus{outline:2px solid var(--ink);outline-offset:-1px;background:var(--surface)}
+.finput.ltr{direction:ltr;text-align:left;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+
+.btn-primary{background:var(--ink);color:var(--ground);border:1px solid var(--ink);font-weight:600;
+  border-radius:var(--r-sm);padding:9px 18px;cursor:pointer;font-family:inherit;font-size:13.5px}
+.btn-primary:hover{opacity:.9}
+.btn-sec{background:var(--surface);color:var(--ink);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:9px 16px;cursor:pointer;font-family:inherit;font-size:13.5px}
+.btn-sec:hover{background:var(--surface-2);border-color:var(--muted)}
+.btn-danger{background:#ff4d4f22;color:#ff4d4f;border:1px solid #ff4d4f44;
+  border-radius:var(--r-sm);padding:8px 12px;cursor:pointer;font-family:inherit;font-size:12.5px}
+
+.task-edit-list{display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;padding-inline-end:4px}
+.task-edit-item{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.task-edit-info{display:flex;flex-direction:column;min-width:0;flex:1}
+.task-edit-actions{display:flex;align-items:center;gap:6px;flex:none}
+
+.guide-box{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;font-size:12.5px;color:var(--ink-2);line-height:1.6}
+.guide-box ol{margin:6px 0 0;padding-inline-start:20px}
+.guide-box li{margin-bottom:4px}
+.guide-box code{background:var(--ground);padding:2px 5px;border-radius:4px;font-family:monospace;font-size:11.5px}
+
+@media (max-width:820px){
+  .boards{grid-template-columns:1fr}
+  .duel-row{grid-template-columns:1fr auto 1fr;gap:8px}
+  .wrap{padding:14px 12px 48px;gap:16px}
+  .striplab{width:58px;font-size:11.5px}
+  .axis{margin-inline-start:70px}
+  .tsub{font-size:11.8px}
+  .dtitle{width:100%;margin-inline-end:0}
+  .daynav .nbtn{flex:1}
+  .syncbar{flex-direction:column;align-items:stretch}
+  .whorow{justify-content:space-between}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- Header -->
+  <header class="masthead">
+    <div>
+      <div class="brand">محمد <span>ضد</span> رسل</div>
+      <div class="tagline">مبارزة الثلاثين يوم · أيلول / سبتمبر — التحدي الحقيقي للاستمرار</div>
+    </div>
+    <div class="header-actions">
+      <div class="sync live" id="syncStatus" title="انقر لفتح إعدادات المزامنة">
+        <span class="dot"></span>
+        <span id="syncTxt">🟢 المزامنة السحابية الحية تعمل</span>
+      </div>
+      <button class="icon-btn" id="openSettingsBtn" type="button" title="إعدادات المزامنة وقاعدة البيانات">
+        ⚙️ الإعدادات
+      </button>
+      <button class="icon-btn" id="shareRoomBtn" type="button" title="مشاركة رابط التحدي للطرف الثاني">
+        🔗 مشاركة الرابط
+      </button>
+      <button class="icon-btn" id="themeToggleBtn" type="button" title="تبديل الوضع الليلي/النهاري">
+        🌙
+      </button>
+    </div>
+  </header>
+
+  <!-- Score Board -->
+  <section class="duel" aria-label="النتيجة الإجمالية">
+    <div class="duel-row">
+      <div class="side a">
+        <button class="pname" id="name1" type="button" title="اضغط لتغيير الاسم">
+          <span class="txt">محمد</span><span class="pen">تغيير</span>
+        </button>
+        <div class="big" id="avg1">0<em>%</em></div>
+        <div class="meta" id="sub1">معدّل الشهر</div>
+      </div>
+      <div class="vs">ضد</div>
+      <div class="side b">
+        <button class="pname" id="name2" type="button" title="اضغط لتغيير الاسم">
+          <span class="pen">تغيير</span><span class="txt">رسل</span>
+        </button>
+        <div class="big" id="avg2">0<em>%</em></div>
+        <div class="meta" id="sub2">معدّل الشهر</div>
+      </div>
+    </div>
+    <div class="tug">
+      <div class="f1" id="tug1" style="width:50%"></div>
+      <div class="f2" id="tug2" style="width:50%"></div>
+      <div class="mid"></div>
+    </div>
+    <div class="verdict" id="verdict">لسّه ما بدت المبارزة — أشّر أول مهمة</div>
+    <div class="statline">
+      <div class="g" id="stats1"></div>
+      <div class="g b" id="stats2"></div>
+    </div>
+  </section>
+
+  <!-- Participant switcher -->
+  <section class="syncbar" aria-label="اختيار الجهاز">
+    <div class="whorow">
+      <span class="lbl">مين أنت على هذا الجهاز؟</span>
+      <button class="mebtn" id="meMe" type="button">محمد</button>
+      <button class="mebtn" id="meHer" type="button">رسل</button>
+    </div>
+    <div class="quick-tools">
+      <button class="icon-btn" id="editTodayBtn" type="button">✏️ تعديل مهام اليوم</button>
+      <button class="icon-btn" id="openCodeSyncBtn" type="button">📱 كود المزامنة</button>
+    </div>
+  </section>
+
+  <!-- Day Navigation -->
+  <nav class="daynav" aria-label="اختيار اليوم">
+    <div class="dtitle">
+      <span id="dayTitle">اليوم 1</span>
+      <small id="dayDow">الثلاثاء</small>
+    </div>
+    <span class="badge" id="dayBadge" hidden>اليوم الحالي</span>
+    <button class="nbtn" id="prev" type="button">‹ السابق</button>
+    <button class="nbtn today" id="goToday" type="button">اليوم</button>
+    <button class="nbtn" id="next" type="button">التالي ›</button>
+  </nav>
+
+  <!-- Daily Task Panels -->
+  <section class="boards">
+    <article class="panel a">
+      <div class="head">
+        <div class="who"><span id="head1">محمد</span></div>
+        <div class="pct"><span id="dpct1">0%</span><small id="dpts1"></small></div>
+      </div>
+      <div class="panel-actions">
+        <button class="edit-tasks-btn" id="editP1TasksBtn" type="button">✏️ تعديل / إضافة مهام محمد</button>
+      </div>
+      <ul class="tasks" id="list1"></ul>
+      <div class="foot"><span>الحد الأدنى 40% — يوم ناقص مو صفر</span><span id="fnote1"></span></div>
+    </article>
+
+    <article class="panel b">
+      <div class="head">
+        <div class="who"><span id="head2">رسل</span></div>
+        <div class="pct"><span id="dpct2">0%</span><small id="dpts2"></small></div>
+      </div>
+      <div class="panel-actions">
+        <button class="edit-tasks-btn" id="editP2TasksBtn" type="button">✏️ تعديل / إضافة مهام رسل</button>
+      </div>
+      <ul class="tasks" id="list2"></ul>
+      <div class="foot"><span>الحد الأدنى 40% — يوم ناقص مو صفر</span><span id="fnote2"></span></div>
+    </article>
+  </section>
+
+  <!-- 30-Day Grid Timeline -->
+  <section class="strips">
+    <div class="strips-head">
+      <h2>مخطط الـ 30 يوم</h2>
+      <span class="meta">اضغط على أي عمود للانتقال لليوم مباشرة</span>
+    </div>
+    <div class="striprow a">
+      <div class="striplab" id="slab1">محمد</div>
+      <div class="strip" id="strip1"></div>
+    </div>
+    <div class="striprow b">
+      <div class="striplab" id="slab2">رسل</div>
+      <div class="strip" id="strip2"></div>
+    </div>
+    <div class="axis" id="axis"></div>
+  </section>
+
+  <!-- Challenge Rules -->
+  <section class="rules">
+    <h2>شلون تُحسب النتيجة والمبارزة</h2>
+    <div class="rgrid">
+      <div class="rcard">
+        <h3>أوزان المهام</h3>
+        <p>العمل العميق والأساسي <b>3 نقاط</b> (راينو، 3ds Max، فوتوشوب)، المتوسط <b>نقطتان</b> (إنجليزي، محتوى، رسم)، والعادات اليومية <b>نقطة واحدة</b> (خطوات، نوم، سوشال).</p>
+      </div>
+      <div class="rcard">
+        <h3>النتيجة نسبة مئوية</h3>
+        <p>النقاط المكتسبة ÷ مجموع نقاط اليوم. النسبة المئوية هي المقياس العادل للمقارنة حتى لو اختلف عدد مهام كل طرف.</p>
+      </div>
+      <div class="rcard">
+        <h3>اليوم المتروك = صفر</h3>
+        <p>معدل الشهر يُحسب بقسمة المجموع على الأيام المنقضية، لذلك الاستمرار اليومي هو مفتاح الفوز.</p>
+      </div>
+      <div class="rcard">
+        <h3>السلسلة والأيام الكاملة</h3>
+        <p>سلسلة الأيام = أيام متتالية فوق <b>60%</b>. اليوم الكامل = <b>100%</b>. في حال تعادل المعدل، الأيام الكاملة تفصل الفائز.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- Task Editor Modal -->
+<div class="modal-overlay" id="taskEditorModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="taskModalTitle">تعديل مهام اليوم</h3>
+      <button class="modal-close" id="closeTaskModalBtn" type="button">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fgroup">
+          <label>اليوم</label>
+          <select class="fselect" id="modalDaySelect"></select>
+        </div>
+        <div class="fgroup">
+          <label>الطرف</label>
+          <select class="fselect" id="modalWhoSelect">
+            <option value="p1">محمد</option>
+            <option value="p2">رسل</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="fgroup">
+        <label>المهام الحالية في هذا اليوم (اضغط للتعديل أو الحذف):</label>
+        <div class="task-edit-list" id="modalTaskList"></div>
+      </div>
+
+      <hr style="border:0;border-top:1px dashed var(--line);margin:4px 0">
+
+      <h4 style="margin:0;font-size:14px;font-weight:600" id="formTaskHeading">➕ إضافة مهمة جديدة</h4>
+      <input type="hidden" id="editTaskId" value="">
+
+      <div class="fgroup">
+        <label>اسم المهمة</label>
+        <input class="finput" id="taskLabelInput" placeholder="مثال: راينو، جيم، قراءة...">
+      </div>
+
+      <div class="fgroup">
+        <label>التفاصيل والوصف</label>
+        <textarea class="ftextarea" id="taskSubInput" placeholder="اكتب تفاصيل الإنجاز المطلوب..."></textarea>
+      </div>
+
+      <div class="fgroup">
+        <label>وزن المهمة</label>
+        <select class="fselect" id="taskWeightInput">
+          <option value="3">3 نقاط — شغل عميق وأساسي</option>
+          <option value="2" selected>2 نقطتان — عمل متوسط</option>
+          <option value="1">1 نقطة — عادة أو نشاط خفيف</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" id="saveTaskBtn" type="button" style="flex:1">حفظ المهمة</button>
+        <button class="btn-sec" id="cancelTaskEditBtn" type="button" style="display:none">إلغاء التعديل</button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <button class="btn-sec" id="copyToAllDaysBtn" type="button" style="font-size:12px">📋 نسخ هذه المهام لكل الأيام المتبقية</button>
+        <button class="btn-danger" id="resetDayTasksBtn" type="button" style="font-size:12px">🔄 استعادة مهام اليوم الافتراضية</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-primary" id="doneTaskModalBtn" type="button">تم والعودة للتحدي</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase & Sync Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>⚙️ إعدادات المزامنة السحابية وقاعدة البيانات</h3>
+      <button class="modal-close" id="closeSettingsModalBtn" type="button">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="guide-box" style="background:#2e8b5718;border-color:#2e8b5744">
+        <b style="color:var(--good)">🟢 المزامنة الفورية التلقائية مفعّلة وجاهزة الآن!</b>
+        <p style="margin:4px 0 0">التطبيق يتزامن تلقائياً وبشكل حي بين أجهزتكم عبر السحابة. كل ما عليكم هو فتح نفس الرابط، وأي مهمة تؤشرونها أو تعدلونها ستظهر للطرف الثاني في نفس اللحظة فوراً!</p>
+      </div>
+
+      <div class="fgroup">
+        <label>اسم غرفة التحدي (Room ID)</label>
+        <div style="display:flex;gap:8px">
+          <input class="finput ltr" id="firebaseRoomInput" value="duel_muhammad_rusul_2026" placeholder="duel_muhammad_rusul_2026">
+          <button class="btn-sec" id="changeRoomBtn" type="button">تغيير الغرفة</button>
+        </div>
+        <small style="color:var(--muted)">تأكد أنك ورسل تستخدمان نفس اسم الغرفة لتكونا في نفس التحدي.</small>
+      </div>
+
+      <hr style="border:0;border-top:1px dashed var(--line);margin:6px 0">
+
+      <div class="guide-box">
+        <b>💡 ربط اختياري بمشروعك الخاص في Firebase:</b>
+        <p style="margin:4px 0">إذا أردت ربطه بقاعدة بيانات Firebase خاصة بك، الصق كود <code>firebaseConfig</code> أدناه:</p>
+      </div>
+
+      <div class="fgroup">
+        <label>كود إعدادات Firebase (اختياري)</label>
+        <textarea class="ftextarea ltr" id="firebaseConfigInput" placeholder='{"apiKey": "...", "authDomain": "...", "databaseURL": "...", "projectId": "..."}'></textarea>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" id="saveFirebaseConfigBtn" type="button" style="flex:1">💾 حفظ إعدادات Firebase</button>
+        <button class="btn-danger" id="clearFirebaseConfigBtn" type="button">حذف إعدادات Firebase</button>
+      </div>
+
+      <hr style="border:0;border-top:1px dashed var(--line);margin:6px 0">
+
+      <div class="fgroup">
+        <label>📱 المزامنة اليدوية بدون إنترنت (تبادل الأكواد)</label>
+        <div style="display:flex;gap:8px">
+          <input class="finput ltr" id="codeSyncInput" placeholder="الصق كود الطرف الثاني هنا...">
+          <button class="btn-sec" id="applyCodeSyncBtn" type="button">تطبيق</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="finput ltr" id="codeSyncOutput" readonly placeholder="كودك لتشاركه عبر الواتساب">
+        <button class="btn-sec" id="copyCodeSyncBtn" type="button">نسخ كودي</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" id="closeSettingsFootBtn" type="button">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   1. بيانات الأيام الافتراضية (30 يوماً متكاملة لمحمد ورسل)
+   ========================================================================= */
+const DEFAULT_DAYS = [
+  {"n":1,"dow":"الثلاثاء","p1":[{"id":"rhino","label":"راينو","sub":"تنصيب Rhino 8 + Enscape (تجربة). جولة بالواجهة: Viewports، Gumball، Pan/Orbit/Zoom. افتح 5 موديلات جاهزة ودور بيهن.","w":3},{"id":"eng","label":"انجليزي","sub":"اختبار تشخيصي قصير — حدد مستواك الحالي بالمهارات الأربعة","w":2},{"id":"content","label":"تجهيز المحتوى","sub":"بناء بنك 30 فكرة ريل + ضبط الحسابات (بايو، صورة، هايلايت، اسم موحّد)","w":2},{"id":"move","label":"جيم","sub":"ثبّت المنبه 8:00 ص والنوم 12:30 ل — من اليوم","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"تنصيب Corona Renderer + ضبط الوحدات (Units Setup) والـ gamma. افتحي 3 مشاهد جاهزة وفكّكيهن: شلون مبنيات؟","w":3},{"id":"ps","label":"فوتوشوب","sub":"الواجهة والأساس: Layers، Layer Masks، Adjustment Layers — والفرق بين التعديل المدمّر وغير المدمّر","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 1  ·  ثبّتي المنبه 8:00 والنوم 12:00 من اليوم","w":1},{"id":"draw","label":"رسم","sub":"10 صفحات خطوط: مستقيمات، دوائر، إهليجات — تحكّم باليد بس","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":2,"dow":"الأربعاء","p1":[{"id":"rhino","label":"راينو","sub":"الإدخال الدقيق: إحداثيات، Ortho، Osnap (End/Mid/Cen/Int/Perp)، ضبط الوحدات. ارسم مستطيل 5×8 م بالضبط.","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 1 — وصف رسم بياني (20 دقيقة موقّتة)","w":2},{"id":"content","label":"تجهيز المحتوى","sub":"كتابة 7 سكربتات (هوك + جسم + إغلاق) + توليد أصول الدفعة الأولى","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو: اجمع كل أعمالك القديمة بمجلد واحد منظّم","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"مراجعة النمذجة: Editable Poly — Vertex/Edge/Polygon، Extrude، Bevel، Inset، Swift Loop","w":3},{"id":"ps","label":"فوتوشوب","sub":"التحديد والقص: Quick Selection، Pen Tool، Select & Mask — قصّي 5 صور بدقة","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة  ·  عناية بالبشرة صباح ومساء","w":1},{"id":"draw","label":"رسم","sub":"منظور نقطة واحدة: صندوق، غرفة فارغة، ممر","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":3,"dow":"الخميس","p1":[{"id":"rhino","label":"راينو","sub":"Layers، Groups، Blocks، Named Views. نظّم ملف بـ6 طبقات بأسماء وألوان صحيحة.","w":3},{"id":"eng","label":"انجليزي","sub":"Speaking Part 1 + 2 — سجّل نفسك واسمع التسجيل","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"مونتاج 7 ريلز + ★ أول نشر الساعة 21:00 ★","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 1 (Full Body تعارف)","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"Splines: Line، Rectangle، Extrude، Bevel Profile، Lathe، Sweep — كرانيش وبراويز","w":3},{"id":"ps","label":"فوتوشوب","sub":"Layer Masks بعمق + Blending Modes الأساسية: Multiply، Screen، Overlay","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 2","w":1},{"id":"draw","label":"رسم","sub":"منظور نقطتين: زاوية غرفة + قطعة أثاث","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":4,"dow":"الجمعة","p1":[{"id":"rhino","label":"راينو","sub":"خفيف: 3 فيديوهات Rhino for Architects + دفتر ملاحظات بالاختصارات","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 2 — مقال 250 كلمة موقّت","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 دقيقة","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"مراجعة أسبوع الإقلاع: شنو اشتغل وشنو لا","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"خفيف: فكّكي مشهد إنتيريور جاهز واكتبي قائمة بكل شي مو فاهمته","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"★ مراجعة أسبوع الإقلاع ★  ·  عناية بالشعر + ترتيب الغرفة الكامل","w":1},{"id":"care","label":"عناية بالشعر + ترتيب عميق","sub":"★ مراجعة أسبوع الإقلاع ★  ·  عناية بالشعر + ترتيب الغرفة الكامل","w":1},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":5,"dow":"السبت","p1":[{"id":"rhino","label":"راينو","sub":"خفيف 45 د (5:00 عصراً): Line، Polyline، Rectangle، Circle، Arc","w":3},{"id":"content","label":"نشر ريل + تفاعل","sub":"يوم الإنتاج: كتابة 7 سكربتات + توليد الأصول (2.5 س)","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"راحة من الجيم","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"صندوق الغرفة: جدران بسماكة حقيقية، أرضية، سقف، فتحات شبابيك وأبواب","w":3},{"id":"ps","label":"فوتوشوب","sub":"Curves و Levels — تصحيح السطوع والتباين على 5 صور","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 3","w":1},{"id":"draw","label":"رسم","sub":"ارسمي غرفتج بالمنظور بدون مسطرة — بالعين","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":6,"dow":"الأحد","p1":[{"id":"rhino","label":"راينو","sub":"Curve / InterpCrv، Control Points، Rebuild، Fair — تحكّم بالمنحنيات","w":3},{"id":"eng","label":"انجليزي","sub":"مفردات + مراجعة أخطاء الأسبوع","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"مونتاج + جدولة 7 ريلز للأسبوع كامل","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 2","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"الأثاث 1: طاولة، كرسي، رفوف — من Splines و Editable Poly","w":3},{"id":"ps","label":"فوتوشوب","sub":"Color Balance و Selective Color — غيّري مزاج الصورة كامل","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 4","w":1},{"id":"draw","label":"رسم","sub":"5 سكتشات × 5 دقائق لأثاث من البيت","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":7,"dow":"الاثنين","p1":[{"id":"rhino","label":"راينو","sub":"Trim، Split، Extend، Join، Explode","w":3},{"id":"eng","label":"انجليزي","sub":"Listening — سكشن كامل + تصحيح","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو 60 د: اختر 3 مشاريع قديمة للتطوير","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"الأثاث 2: صوفا وسرير — TurboSmooth و Chamfer، والفرق بين high و low poly","w":3},{"id":"ps","label":"فوتوشوب","sub":"Camera Raw Filter — أقوى أداة بالبرنامج، خذي وقتج بيها","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة  ·  مشي 45 د","w":1},{"id":"draw","label":"رسم","sub":"صوفا وسرير من ثلاث زوايا مختلفة","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":8,"dow":"الثلاثاء","p1":[{"id":"rhino","label":"راينو","sub":"Offset، Fillet، Chamfer، Array (Rect/Polar)، Mirror","w":3},{"id":"eng","label":"انجليزي","sub":"Reading — نص واحد موقّت 20 د","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 3","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"المكتبات والأصول: استيراد موديلات جاهزة، تنظيفها، Reset XForm، مطابقة الوحدات","w":3},{"id":"ps","label":"فوتوشوب","sub":"Content-Aware Fill و Clone Stamp — شيلي أي عنصر من صورة بدون أثر","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 5","w":1},{"id":"draw","label":"رسم","sub":"تفاصيل: يد، قدم كرسي، طيّات قماش","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":9,"dow":"الأربعاء","p1":[{"id":"rhino","label":"راينو","sub":"Dimensions + Text + Hatch + ضبط مقياس الرسم","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 1 — رسم بياني ثاني","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو 60 د: كتابة نص تعريفي لكل مشروع","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"التفاصيل الصغيرة: ستائر، وسائد، نباتات، إكسسوارات — هذي اللي تخلي المشهد حقيقي","w":3},{"id":"ps","label":"فوتوشوب","sub":"Smart Objects وسير عمل غير مدمّر بالكامل","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة  ·  عناية بالبشرة","w":1},{"id":"draw","label":"رسم","sub":"نبتة داخلية بالتفصيل — 30 دقيقة","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":10,"dow":"الخميس","p1":[{"id":"rhino","label":"راينو","sub":"★ مشروع الأسبوع: مخطط شقة 100 م² كامل — جدران، فتحات، أبعاد، هاتشات","w":3},{"id":"eng","label":"انجليزي","sub":"Speaking — سجّل نفسك بموضوع Part 2","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل + صوّر شاشة المشروع لريل","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 4","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"★ مشروع الأسبوع: غرفة معيشة كاملة منمذجة — جدران، أثاث، إكسسوارات، جاهزة للخامات","w":3},{"id":"ps","label":"فوتوشوب","sub":"تجميع: طبّقي كل شي تعلمتيه على صورة وحدة من البداية للنهاية","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 6","w":1},{"id":"draw","label":"رسم","sub":"ارسمي المشهد اللي نمذجتيه — سكتش","w":2},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":11,"dow":"الجمعة","p1":[{"id":"rhino","label":"راينو","sub":"مراجعة الأسبوع: أعد رسم أصعب جزء بدون فيديو","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 2 — مقال 250 كلمة موقّت","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + قراءة أرقام الأسبوع (مشاهدات 3 ثواني، حفظ، متابعين)","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"★ المراجعة الأسبوعية ★ + راحة","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"مراجعة: شنو أخذ منّج أطول وقت؟ سوّيه مرة ثانية أسرع","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"★ المراجعة الأسبوعية ★  ·  ريل الأسبوع  ·  عناية بالشعر","w":1},{"id":"care","label":"عناية بالشعر + ترتيب عميق","sub":"★ المراجعة الأسبوعية ★  ·  ريل الأسبوع  ·  عناية بالشعر","w":1},{"id":"social","label":"سوشل تحت 90 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":12,"dow":"السبت","p1":[{"id":"rhino","label":"راينو","sub":"خفيف 45 د (5:00 عصراً): ExtrudeCrv، ExtrudeSrf، Cap، PlanarSrf","w":3},{"id":"content","label":"نشر ريل + تفاعل","sub":"يوم الإنتاج: 7 سكربتات + توليد الأصول","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"راحة من الجيم","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"Corona / Physical Material: Diffuse، Reflection، Glossiness، IOR — شنو يعني كل واحد فعلياً","w":3},{"id":"ps","label":"فوتوشوب","sub":"Sky Replacement — بدّلي السماء بـ3 صور معمارية","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 7","w":1},{"id":"draw","label":"رسم","sub":"ظل وضوء: كرة ومكعب بمصدر ضوء واحد","w":2},{"id":"social","label":"سوشل تحت 70 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":13,"dow":"الأحد","p1":[{"id":"rhino","label":"راينو","sub":"Boolean Union / Difference / Split — قص الشبابيك والأبواب","w":3},{"id":"eng","label":"انجليزي","sub":"مفردات + مراجعة أخطاء الأسبوع","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"مونتاج + جدولة 7 ريلز","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 5","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"خرائط PBR: Diffuse، Roughness، Normal، Displacement — من وين تجيبينها وشلون تركبينها","w":3},{"id":"ps","label":"فوتوشوب","sub":"دمج عناصر: أضيفي شجرة وشخص لصورة معمارية بظل صحيح","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 8","w":1},{"id":"draw","label":"رسم","sub":"دراسة قيم: نفس الشكل بـ5 درجات رمادي","w":2},{"id":"social","label":"سوشل تحت 70 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":14,"dow":"الاثنين","p1":[{"id":"rhino","label":"راينو","sub":"Revolve، Sweep1، Sweep2، RailRevolve","w":3},{"id":"eng","label":"انجليزي","sub":"Listening — سكشن كامل","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو 60 د: تخطيط اللوحات (Layout)","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"UVW Map و Unwrap — المقياس الحقيقي للخامة (Real-World Scale)","w":3},{"id":"ps","label":"فوتوشوب","sub":"الظلال والانعكاسات اليدوية — شلون تخلين العنصر المضاف يبيّن طبيعي","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة","w":1},{"id":"draw","label":"رسم","sub":"قماش وطيّات — ظل وضوء","w":2},{"id":"social","label":"سوشل تحت 70 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":15,"dow":"الثلاثاء","p1":[{"id":"rhino","label":"راينو","sub":"Loft، Pipe، Shell، OffsetSrf — سماكات الجدران والألواح","w":3},{"id":"eng","label":"انجليزي","sub":"Reading — نص موقّت","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 6","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"الزجاج والمعادن: Refraction، Fresnel، Anisotropy","w":3},{"id":"ps","label":"فوتوشوب","sub":"Dodge و Burn احترافي على طبقة رمادية منفصلة","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 9","w":1},{"id":"draw","label":"رسم","sub":"زجاج ومعدن — انعكاسات بالقلم الرصاص","w":2},{"id":"social","label":"سوشل تحت 70 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":16,"dow":"الأربعاء","p1":[{"id":"rhino","label":"راينو","sub":"Solid editing: FilletEdge، ChamferEdge، MoveFace + Scale1D/2D/3D، Shear","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 1","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو 60 د","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"الخشب والقماش والجلد + Multi/Sub-Object و Material ID","w":3},{"id":"ps","label":"فوتوشوب","sub":"Frequency Separation — تنقية بدون ما يروح الملمس","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة  ·  عناية بالبشرة","w":1},{"id":"draw","label":"رسم","sub":"خشب — عروق ونسيج","w":2},{"id":"social","label":"سوشل تحت 70 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":17,"dow":"الخميس","p1":[{"id":"rhino","label":"راينو","sub":"★ مشروع الأسبوع: حوّل مخطط الأسبوع 1 إلى كتلة 3D كاملة — جدران بسماكة، سقف، فتحات","w":3},{"id":"eng","label":"انجليزي","sub":"Speaking — سجّل نفسك","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + ريل «من مخطط 2D لموديل 3D»","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 7","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"★ مشروع الأسبوع: خامات كاملة لغرفة الأسبوع 1 — كل عنصر بخامة صحيحة وبمقياس حقيقي","w":3},{"id":"ps","label":"فوتوشوب","sub":"تدرّج لوني كامل (Color Grading) لمشهد إنتيريور","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 10","w":1},{"id":"draw","label":"رسم","sub":"غرفتج بالخامات — سكتش بالقلم الرصاص","w":2},{"id":"social","label":"سوشل تحت 70 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":18,"dow":"الجمعة","p1":[{"id":"rhino","label":"راينو","sub":"مراجعة: أعد بناء أصعب عنصر 3D بدون فيديو","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 2 — مقال 250 كلمة موقّت","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + قراءة أرقام الأسبوع","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"★ المراجعة الأسبوعية ★ + راحة","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"مراجعة: أي خامة طلعت مو مقنعة؟ صلّحيها","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"★ المراجعة الأسبوعية ★  ·  ريل الأسبوع  ·  عناية بالشعر","w":1},{"id":"care","label":"عناية بالشعر + ترتيب عميق","sub":"★ المراجعة الأسبوعية ★  ·  ريل الأسبوع  ·  عناية بالشعر","w":1},{"id":"social","label":"سوشل تحت 70 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":19,"dow":"السبت","p1":[{"id":"rhino","label":"راينو","sub":"خفيف 45 د (5:00 عصراً): مفهوم NURBS — Degree، Isocurves، سطح من منحنيات","w":3},{"id":"content","label":"نشر ريل + تفاعل","sub":"يوم الإنتاج: 7 سكربتات + توليد الأصول","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"راحة من الجيم","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"Corona Sun + Sky — إضاءة نهارية طبيعية، زاوية الشمس ووقت اليوم","w":3},{"id":"ps","label":"فوتوشوب","sub":"الأجواء: ضباب، غبار، أشعة ضوء (Light Rays)","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 11","w":1},{"id":"draw","label":"رسم","sub":"منظر بضوء نافذة — انتبهي لاتجاه الظل","w":2},{"id":"social","label":"سوشل تحت 50 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},{"n":20,"dow":"الأحد","p1":[{"id":"rhino","label":"راينو","sub":"NetworkSrf، Patch، Blend + تحليل الجودة: Zebra، Curvature","w":3},{"id":"eng","label":"انجليزي","sub":"مفردات + مراجعة أخطاء","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"مونتاج + جدولة 7 ريلز","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 8","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"HDRI Environment — الإضاءة من صورة، ومن وين تجيبين HDRI مجانية","w":3},{"id":"ps","label":"فوتوشوب","sub":"Luminosity Masks — تحكّم بالضوء بدقة عالية","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 12","w":1},{"id":"draw","label":"رسم","sub":"نفس المشهد بثلاث إضاءات مختلفة","w":2},{"id":"social","label":"سوشل تحت 50 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":21,"dow":"الاثنين","p1":[{"id":"rhino","label":"راينو","sub":"★ Grasshopper يوم 1: الواجهة، Params، Number Slider، Panel — أول تعريف موصول","w":3},{"id":"eng","label":"انجليزي","sub":"Listening","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو 60 د","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"الإضاءة الداخلية: Corona Light، Portal Lights، IES — مشهد ليلي","w":3},{"id":"ps","label":"فوتوشوب","sub":"محاكاة الإضاءة بالفوتوشوب — أضيفي مصدر ضوء لصورة جاهزة","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة","w":1},{"id":"draw","label":"رسم","sub":"مشهد ليلي — تباين عالي","w":2},{"id":"social","label":"سوشل تحت 50 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":22,"dow":"الثلاثاء","p1":[{"id":"rhino","label":"راينو","sub":"★ GH يوم 2: Series، Range، Division، Move، Vector — أول شبكة نقاط","w":3},{"id":"eng","label":"انجليزي","sub":"Reading موقّت","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 9","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"الكاميرا: Focal Length، ارتفاع 150 سم، Two-point perspective، Depth of Field","w":3},{"id":"ps","label":"فوتوشوب","sub":"Perspective Crop و Lens Correction — تصحيح انحراف الخطوط","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 13","w":1},{"id":"draw","label":"رسم","sub":"6 ثامبنيلز صغيرة: زوايا مختلفة لنفس الغرفة","w":2},{"id":"social","label":"سوشل تحت 50 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":23,"dow":"الأربعاء","p1":[{"id":"rhino","label":"راينو","sub":"★ GH يوم 3: Lists — List Item، Cull Pattern، Graph Mapper — تدرّج بالفتحات","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 1","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو 60 د","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"التكوين: قاعدة الأثلاث، خطوط القيادة، توازن الفراغ — هذا اللي يفرق صورة عن صورة","w":3},{"id":"ps","label":"فوتوشوب","sub":"Exposure و استرجاع الـ Highlights والـ Shadows","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة  ·  عناية بالبشرة","w":1},{"id":"draw","label":"رسم","sub":"حلّلي تكوين 3 صور معمارية تعجبج وارسمي هيكلها","w":2},{"id":"social","label":"سوشل تحت 50 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":24,"dow":"الخميس","p1":[{"id":"rhino","label":"راينو","sub":"★ مشروع الأسبوع: واجهة parametric (Voronoi أو تثقيب متدرّج) مركّبة على مبنى الأسبوع 2","w":3},{"id":"eng","label":"انجليزي","sub":"Speaking — سجّل نفسك","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + ريل «واجهة تتغيّر بسلايدر واحد»","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 10","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"★ مشروع الأسبوع: 3 كاميرات لغرفتج بثلاث إضاءات — صباح، عصر، ليل","w":3},{"id":"ps","label":"فوتوشوب","sub":"عالجي الثلاث صور بنفس الستايل حتى تبيّن سلسلة وحدة","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 14","w":1},{"id":"draw","label":"رسم","sub":"سكتش سريع لكل زاوية قبل ما ترندرين","w":2},{"id":"social","label":"سوشل تحت 50 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},
+  {"n":25,"dow":"الجمعة","p1":[{"id":"rhino","label":"راينو","sub":"مراجعة: افتح تعريف GH مالتك وفسّره بصوت عالي","w":3},{"id":"eng","label":"انجليزي","sub":"Writing Task 2 — مقال 250 كلمة موقّت","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + قراءة أرقام الأسبوع","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"★ المراجعة الأسبوعية ★ + راحة","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"مراجعة: أي إضاءة طلعت أحلى وليش؟ اكتبي الجواب","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"★ المراجعة الأسبوعية ★  ·  ريل الأسبوع  ·  عناية بالشعر","w":1},{"id":"care","label":"عناية بالشعر + ترتيب عميق","sub":"★ المراجعة الأسبوعية ★  ·  ريل الأسبوع  ·  عناية بالشعر","w":1},{"id":"social","label":"سوشل تحت 50 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},{"n":26,"dow":"السبت","p1":[{"id":"rhino","label":"راينو","sub":"خفيف 45 د (5:00 عصراً): Materials + UV Mapping + Environments","w":3},{"id":"content","label":"نشر ريل + تفاعل","sub":"يوم الإنتاج الأخير: 7 سكربتات + توليد الأصول","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"راحة من الجيم","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"إعدادات الرندر: Noise Level، Denoising، Resolution — شلون توازنين بين الجودة والوقت","w":3},{"id":"ps","label":"فوتوشوب","sub":"Render Elements: شنو تسوين بـ Z-Depth و Reflection pass","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 15","w":1},{"id":"draw","label":"رسم","sub":"راحة أو رسم حر","w":2},{"id":"social","label":"سوشل تحت 30 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},{"n":27,"dow":"الأحد","p1":[{"id":"rhino","label":"راينو","sub":"Enscape / Rhino Render: إضاءة، كاميرا، Depth of Field — أول رندر محترم","w":3},{"id":"eng","label":"انجليزي","sub":"مفردات + مراجعة","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"مونتاج + جدولة الريلز الأخيرة","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 11","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"Render Elements و LightMix — غيّري الإضاءة بعد الرندر بدون إعادة رندر","w":3},{"id":"ps","label":"فوتوشوب","sub":"دمج الـ passes بالفوتوشوب — الطريقة الاحترافية","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 16","w":1},{"id":"draw","label":"رسم","sub":"سكتش حر 20 د","w":2},{"id":"social","label":"سوشل تحت 30 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},{"n":28,"dow":"الاثنين","p1":[{"id":"rhino","label":"راينو","sub":"Make2D + Layouts + Print — إخراج مساقط وواجهات جاهزة للطباعة","w":3},{"id":"eng","label":"انجليزي","sub":"Listening","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"بورتفوليو 60 د: تجميع اللوح النهائي","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"رندر نهائي بجودة عالية للكاميرات الثلاث — خلّيه يشتغل بالليل","w":3},{"id":"ps","label":"فوتوشوب","sub":"البوست الكامل: تباين، لون، أجواء، تفاصيل","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"10,000 خطوة","w":1},{"id":"draw","label":"رسم","sub":"سكتش حر 20 د","w":2},{"id":"social","label":"سوشل تحت 30 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},{"n":29,"dow":"الثلاثاء","p1":[{"id":"rhino","label":"راينو","sub":"التصدير والربط: Rhino ↔ Revit (مقدمة Rhino.Inside) + DWG / IFC","w":3},{"id":"eng","label":"انجليزي","sub":"★ اختبار IELTS تجريبي كامل ★","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + تفاعل 20 د","w":2},{"id":"move","label":"جيم","sub":"جيم — الحصة 12","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"الإخراج: أحجام الصور، ملفات التسليم، تنظيم مشروع نظيف","w":3},{"id":"ps","label":"فوتوشوب","sub":"تصميم لوح عرض (Board): تخطيط وتايبوغرافي بسيط","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"جيم","sub":"جيم — الحصة 17","w":1},{"id":"draw","label":"رسم","sub":"سكتش حر 20 د","w":2},{"id":"social","label":"سوشل تحت 30 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]},{"n":30,"dow":"الأربعاء","p1":[{"id":"rhino","label":"راينو","sub":"★★ المشروع الختامي: لوح عرض كامل — مساقط + 3 رندرات + الواجهة الـparametric","w":3},{"id":"eng","label":"انجليزي","sub":"صحّح الاختبار وسجّل الدرجة مقابل يوم 1","w":2},{"id":"content","label":"نشر ريل + تفاعل","sub":"نشر + ريل ختام الشهر «30 يوم من الصفر لهذا»","w":2},{"id":"move","label":"حركة / مشي ٢٠ د","sub":"★ مراجعة الشهر ★ + رفع اللوح للبورتفوليو ولينكدإن","w":1},{"id":"sleep","label":"نوم قبل ١٢:٣٠","sub":"وصحوة ٨:٠٠ — أساس كل شي فوق","w":1}],"p2":[{"id":"max","label":"3ds Max","sub":"★★ التسليم النهائي: 3 رندرات نهائية معالجة + لوح عرض كامل","w":3},{"id":"ps","label":"فوتوشوب","sub":"اللمسات الأخيرة + تصدير بمقاسات النشر","w":3},{"id":"steps","label":"١٠٬٠٠٠ خطوة","sub":"الهدف الوحيد بدون يوم راحة","w":1},{"id":"move","label":"مشي ٤٥ د","sub":"★ مراجعة الشهر ★  ·  ريل الختام  ·  انشري العمل","w":1},{"id":"draw","label":"رسم","sub":"ارسمي غلاف اللوح","w":2},{"id":"social","label":"سوشل تحت 30 دقيقة","sub":"المؤقت بالتطبيق نفسه، مو على النيّة","w":1}]}
+];
+
+/* =========================================================================
+   2. إدارة الحالة والتخزين المحلي + المهام المخصصة
+   ========================================================================= */
+const LS_KEY = "duel30.v2";
+let state = {
+  meta: { p1Name: "محمد", p2Name: "رسل", t1: 0, t2: 0, theme: "auto" },
+  done: {},        // done["05_p1"] = { taskId: true }
+  customTasks: {}  // customTasks["1_p1"] = [ { id, label, sub, w }, ... ]
+};
+
+let me = null;
+let currentDayIdx = 0;
+let changeListeners = [];
+
+// استخراج اسم الغرفة من الرابط (URL param: ?room=...)
+const urlParams = new URLSearchParams(window.location.search);
+let activeRoom = urlParams.get("room") || localStorage.getItem("duel30.firebaseRoom") || "duel_muhammad_rusul_2026";
+localStorage.setItem("duel30.firebaseRoom", activeRoom);
+
+function $(id) { return document.getElementById(id); }
+function num(n) { return String(n); }
+function esc(s) {
+  return String(s || "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[c]);
+}
+
+// حساب اليوم الحالي الفعلي
+function calculateTodayIndex() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+  if (y < 2026 || (y === 2026 && m < 8)) return 0;
+  if (y > 2026 || (y === 2026 && m > 8)) return 29;
+  return Math.min(29, Math.max(0, d - 1));
+}
+const TODAY_IDX = calculateTodayIndex();
+currentDayIdx = TODAY_IDX;
+
+// استرجاع البيانات المخزنة محلياً
+try {
+  const saved = localStorage.getItem(LS_KEY);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (parsed.meta) state.meta = Object.assign(state.meta, parsed.meta);
+    if (parsed.done) state.done = parsed.done;
+    if (parsed.customTasks) state.customTasks = parsed.customTasks;
+  }
+} catch (e) {
+  console.warn("Local storage error:", e);
+}
+
+function persistLocal() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch (e) {}
+}
+
+function key(dayNum, who) {
+  return (dayNum < 10 ? "0" : "") + dayNum + "_" + who;
+}
+
+function doneFor(dayNum, who) {
+  return state.done[key(dayNum, who)] || {};
+}
+
+// الحصول على قائمة مهام يوم معين (إما مخصصة أو افتراضية)
+function getTasksFor(dayIdx, who) {
+  const dayNum = dayIdx + 1;
+  const customKey = dayNum + "_" + who;
+  if (state.customTasks && state.customTasks[customKey] && state.customTasks[customKey].length > 0) {
+    return state.customTasks[customKey];
+  }
+  return (DEFAULT_DAYS[dayIdx] && DEFAULT_DAYS[dayIdx][who]) ? DEFAULT_DAYS[dayIdx][who] : [];
+}
+
+/* =========================================================================
+   3. نظام الحسابات والنقاط
+   ========================================================================= */
+function score(dayIdx, who) {
+  const tasks = getTasksFor(dayIdx, who);
+  const done = doneFor(dayIdx + 1, who);
+  let poss = 0, earn = 0;
+  for (let i = 0; i < tasks.length; i++) {
+    const w = Number(tasks[i].w) || 1;
+    poss += w;
+    if (done[tasks[i].id]) earn += w;
+  }
+  return { earn, poss, pct: poss ? Math.round((earn / poss) * 100) : 0 };
+}
+
+function summary(who) {
+  let sum = 0, perfect = 0, elapsed = TODAY_IDX + 1, streak = 0, best = 0, run = 0;
+  for (let i = 0; i < 30; i++) {
+    const pct = score(i, who).pct;
+    if (i < elapsed) {
+      sum += pct;
+      if (pct === 100) perfect++;
+      if (pct >= 60) {
+        run++;
+        if (run > best) best = run;
+      } else {
+        run = 0;
+      }
+    }
+  }
+  // حساب السلسلة المتصلة الحالية
+  for (let j = elapsed - 1; j >= 0; j--) {
+    if (score(j, who).pct >= 60) streak++;
+    else break;
+  }
+  return {
+    avg: elapsed ? Math.round(sum / elapsed) : 0,
+    perfect,
+    streak,
+    best
+  };
+}
+
+/* =========================================================================
+   4. التصيير وتحديث واجهة المستخدم (UI Rendering)
+   ========================================================================= */
+const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5.2 5.2L20 7"/></svg>';
+
+function renderTaskList(who, listEl) {
+  const tasks = getTasksFor(currentDayIdx, who);
+  const done = doneFor(currentDayIdx + 1, who);
+
+  if (!tasks || tasks.length === 0) {
+    listEl.innerHTML = '<div class="tasks-empty">لا توجد مهام لهذا اليوم — اضغط "تعديل المهام" لإضافة مهام جديدة</div>';
+    return;
+  }
+
+  let html = "";
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    const isDone = !!done[t.id];
+    html += `
+      <li class="task ${isDone ? 'done' : ''}" role="button" tabindex="0" data-who="${who}" data-task="${t.id}" aria-pressed="${isDone}">
+        <span class="box">${CHECK_SVG}</span>
+        <span class="tbody">
+          <span class="tlabel">${esc(t.label)}</span>
+          ${t.sub ? `<span class="tsub">${esc(t.sub)}</span>` : ''}
+        </span>
+        <span class="wchip w${t.w || 1}">${num(t.w || 1)}</span>
+      </li>
+    `;
+  }
+  listEl.innerHTML = html;
+}
+
+function updateScoreHeader(who, pctEl, ptsEl, footEl) {
+  const s = score(currentDayIdx, who);
+  pctEl.textContent = num(s.pct) + "%";
+  ptsEl.textContent = num(s.earn) + " من " + num(s.poss);
+  footEl.textContent = s.pct === 100 ? "يوم كامل ✦" : s.pct >= 60 ? "ماشي زين" : s.pct >= 40 ? "يوم ناقص — محسوب" : "";
+}
+
+function renderStrip(who, el) {
+  let html = "";
+  for (let i = 0; i < 30; i++) {
+    const pct = score(i, who).pct;
+    let cls = i > TODAY_IDX ? "future" : pct === 0 ? "empty" : "";
+    if (i === currentDayIdx) cls += " sel";
+    const h = Math.max(3, Math.round(pct * 0.34));
+    html += `
+      <button class="cellbtn ${cls}" type="button" data-day="${i}" title="${num(i + 1)} أيلول — ${num(pct)}%">
+        <span class="cell" style="height:${h}px"></span>
+      </button>
+    `;
+  }
+  el.innerHTML = html;
+}
+
+function renderAll() {
+  const d = DEFAULT_DAYS[currentDayIdx] || { n: currentDayIdx + 1, dow: "" };
+  $("dayTitle").textContent = "اليوم " + num(currentDayIdx + 1);
+  $("dayDow").textContent = d.dow + " ・ " + num(currentDayIdx + 1) + " أيلول";
+  $("dayBadge").hidden = (currentDayIdx !== TODAY_IDX);
+  $("prev").disabled = (currentDayIdx === 0);
+  $("next").disabled = (currentDayIdx === 29);
+
+  $("head1").textContent = state.meta.p1Name;
+  $("head2").textContent = state.meta.p2Name;
+  $("slab1").textContent = state.meta.p1Name;
+  $("slab2").textContent = state.meta.p2Name;
+  $("name1").querySelector(".txt").textContent = state.meta.p1Name;
+  $("name2").querySelector(".txt").textContent = state.meta.p2Name;
+  $("meMe").textContent = state.meta.p1Name;
+  $("meHer").textContent = state.meta.p2Name;
+  $("editP1TasksBtn").textContent = "✏️ تعديل / إضافة مهام " + state.meta.p1Name;
+  $("editP2TasksBtn").textContent = "✏️ تعديل / إضافة مهام " + state.meta.p2Name;
+
+  renderTaskList("p1", $("list1"));
+  renderTaskList("p2", $("list2"));
+  refreshScores();
+}
+
+function refreshScores() {
+  updateScoreHeader("p1", $("dpct1"), $("dpts1"), $("fnote1"));
+  updateScoreHeader("p2", $("dpct2"), $("dpts2"), $("fnote2"));
+  renderStrip("p1", $("strip1"));
+  renderStrip("p2", $("strip2"));
+
+  const a = summary("p1"), b = summary("p2");
+  $("avg1").innerHTML = num(a.avg) + '<em>%</em>';
+  $("avg2").innerHTML = num(b.avg) + '<em>%</em>';
+  $("sub1").textContent = "معدّل " + num(TODAY_IDX + 1) + " يوم";
+  $("sub2").textContent = "معدّل " + num(TODAY_IDX + 1) + " يوم";
+  $("stats1").innerHTML = `<span>سلسلة <b>${num(a.streak)}</b></span><span>أيام كاملة <b>${num(a.perfect)}</b></span>`;
+  $("stats2").innerHTML = `<span>سلسلة <b>${num(b.streak)}</b></span><span>أيام كاملة <b>${num(b.perfect)}</b></span>`;
+
+  const total = a.avg + b.avg;
+  const s1 = total ? Math.round((a.avg / total) * 100) : 50;
+  $("tug1").style.width = s1 + "%";
+  $("tug2").style.width = (100 - s1) + "%";
+
+  let v;
+  if (a.avg === 0 && b.avg === 0) {
+    v = "لسّه ما بدت المبارزة — أشّر أول مهمة";
+  } else if (a.avg === b.avg) {
+    v = `تعادل على <b>${num(a.avg)}%</b> — الأيام الكاملة تفصل: ${num(a.perfect)} مقابل ${num(b.perfect)}`;
+  } else {
+    const winner = a.avg > b.avg ? state.meta.p1Name : state.meta.p2Name;
+    const gap = Math.abs(a.avg - b.avg);
+    v = `<b>${esc(winner)}</b> متقدّم بـ<b>${num(gap)}</b> نقطة مئوية`;
+  }
+  $("verdict").innerHTML = v;
+}
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function emitChange(reason) {
+  persistLocal();
+  changeListeners.forEach(fn => {
+    try { fn(reason); } catch(e) { console.error(e); }
+  });
+}
+
+function toggleTask(who, taskId, targetEl) {
+  const dayNum = currentDayIdx + 1;
+  const k = key(dayNum, who);
+  const m = state.done[k] || (state.done[k] = {});
+  let on;
+  if (m[taskId]) {
+    delete m[taskId];
+    on = false;
+  } else {
+    m[taskId] = true;
+    on = true;
+  }
+  if (targetEl) {
+    targetEl.classList.toggle("done", on);
+    targetEl.setAttribute("aria-pressed", String(on));
+  } else {
+    renderAll();
+  }
+  state.meta[who === "p1" ? "t1" : "t2"] = Date.now();
+  refreshScores();
+  emitChange("toggle");
+}
+
+/* =========================================================================
+   5. إدارة الأحداث والتنقل
+   ========================================================================= */
+document.addEventListener("click", e => {
+  const taskEl = e.target.closest(".task");
+  if (taskEl) {
+    toggleTask(taskEl.dataset.who, taskEl.dataset.task, taskEl);
+    return;
+  }
+  const cellEl = e.target.closest(".cellbtn");
+  if (cellEl) {
+    currentDayIdx = Number(cellEl.dataset.day);
+    renderAll();
+    return;
+  }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key !== " " && e.key !== "Enter") return;
+  const taskEl = e.target.closest && e.target.closest(".task");
+  if (taskEl) {
+    e.preventDefault();
+    toggleTask(taskEl.dataset.who, taskEl.dataset.task, taskEl);
+  }
+});
+
+$("prev").onclick = () => { if (currentDayIdx > 0) { currentDayIdx--; renderAll(); } };
+$("next").onclick = () => { if (currentDayIdx < 29) { currentDayIdx++; renderAll(); } };
+$("goToday").onclick = () => { currentDayIdx = TODAY_IDX; renderAll(); };
+
+function renameParticipant(who) {
+  const k = who === "p1" ? "p1Name" : "p2Name";
+  let v = prompt("اسم المشارك:", state.meta[k]);
+  if (v === null) return;
+  v = v.trim().slice(0, 20);
+  if (!v) return;
+  state.meta[k] = v;
+  state.meta[who === "p1" ? "t1" : "t2"] = Date.now();
+  renderAll();
+  emitChange("rename");
+}
+$("name1").onclick = () => renameParticipant("p1");
+$("name2").onclick = () => renameParticipant("p2");
+
+function setMe(who) {
+  me = who;
+  try { localStorage.setItem("duel30.me", who); } catch(e) {}
+  $("meMe").classList.toggle("on", who === "p1");
+  $("meHer").classList.toggle("on", who === "p2");
+  toast("تم ضبط جهازك باسم: " + (who === "p1" ? state.meta.p1Name : state.meta.p2Name));
+}
+$("meMe").onclick = () => setMe("p1");
+$("meHer").onclick = () => setMe("p2");
+
+try {
+  const savedMe = localStorage.getItem("duel30.me");
+  if (savedMe === "p1" || savedMe === "p2") setMe(savedMe);
+} catch(e) {}
+
+// Share room URL button
+$("shareRoomBtn").onclick = () => {
+  const url = window.location.origin + window.location.pathname + "?room=" + encodeURIComponent(activeRoom);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => {
+      toast("تم نسخ رابط التحدي للغرفة (" + activeRoom + ") ✓");
+    }).catch(() => {
+      prompt("انسخ هذا الرابط وشاركه مع الطرف الثاني:", url);
+    });
+  } else {
+    prompt("انسخ هذا الرابط وشاركه مع الطرف الثاني:", url);
+  }
+};
+
+// Theme Toggle
+$("themeToggleBtn").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme") || 
+    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  state.meta.theme = next;
+  $("themeToggleBtn").textContent = next === "dark" ? "☀️" : "🌙";
+  persistLocal();
+};
+if (state.meta.theme && state.meta.theme !== "auto") {
+  document.documentElement.setAttribute("data-theme", state.meta.theme);
+  $("themeToggleBtn").textContent = state.meta.theme === "dark" ? "☀️" : "🌙";
+}
+
+// Axis Setup
+(function setupAxis() {
+  let h = "";
+  for (let i = 1; i <= 30; i++) {
+    h += `<span>${i % 5 === 0 || i === 1 ? num(i) : ""}</span>`;
+  }
+  $("axis").innerHTML = h;
+})();
+
+/* =========================================================================
+   6. محرر المهام التفاعلي (Task Editor & Manager)
+   ========================================================================= */
+let editingDay = 1;
+let editingWho = "p1";
+
+function initTaskEditorDaysDropdown() {
+  const sel = $("modalDaySelect");
+  sel.innerHTML = "";
+  for (let i = 1; i <= 30; i++) {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = "اليوم " + i + " (" + (DEFAULT_DAYS[i-1] ? DEFAULT_DAYS[i-1].dow : "") + ")";
+    sel.appendChild(opt);
+  }
+}
+initTaskEditorDaysDropdown();
+
+function openTaskEditor(dayNumber, who) {
+  editingDay = dayNumber || (currentDayIdx + 1);
+  editingWho = who || (me || "p1");
+  $("modalDaySelect").value = editingDay;
+  $("modalWhoSelect").value = editingWho;
+  renderModalTaskList();
+  resetTaskForm();
+  $("taskEditorModal").classList.add("open");
+}
+
+function closeTaskEditor() {
+  $("taskEditorModal").classList.remove("open");
+  renderAll();
+}
+
+$("closeTaskModalBtn").onclick = closeTaskEditor;
+$("doneTaskModalBtn").onclick = closeTaskEditor;
+$("editTodayBtn").onclick = () => openTaskEditor(currentDayIdx + 1, me || "p1");
+$("editP1TasksBtn").onclick = () => openTaskEditor(currentDayIdx + 1, "p1");
+$("editP2TasksBtn").onclick = () => openTaskEditor(currentDayIdx + 1, "p2");
+
+$("modalDaySelect").onchange = e => {
+  editingDay = Number(e.target.value);
+  renderModalTaskList();
+  resetTaskForm();
+};
+$("modalWhoSelect").onchange = e => {
+  editingWho = e.target.value;
+  renderModalTaskList();
+  resetTaskForm();
+};
+
+function renderModalTaskList() {
+  const listEl = $("modalTaskList");
+  const tasks = getTasksFor(editingDay - 1, editingWho);
+  const targetName = editingWho === "p1" ? state.meta.p1Name : state.meta.p2Name;
+  $("taskModalTitle").textContent = `تعديل مهام اليوم ${editingDay} — ${targetName}`;
+
+  if (!tasks || tasks.length === 0) {
+    listEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">لا توجد مهام في هذا اليوم. أضف مهمة جديدة من الأسفل.</div>';
+    return;
+  }
+
+  let html = "";
+  tasks.forEach((t, idx) => {
+    html += `
+      <div class="task-edit-item">
+        <div class="task-edit-info">
+          <div style="font-weight:600;font-size:13.5px">${esc(t.label)} <span class="wchip w${t.w || 1}">${num(t.w || 1)} نقاط</span></div>
+          ${t.sub ? `<div style="font-size:12px;color:var(--muted)">${esc(t.sub)}</div>` : ''}
+        </div>
+        <div class="task-edit-actions">
+          <button class="btn-sec" type="button" onclick="window.TaskEditor.editIndex(${idx})" style="padding:4px 8px;font-size:12px" title="تعديل">✏️</button>
+          <button class="btn-danger" type="button" onclick="window.TaskEditor.deleteIndex(${idx})" style="padding:4px 8px;font-size:12px" title="حذف">🗑️</button>
+        </div>
+      </div>
+    `;
+  });
+  listEl.innerHTML = html;
+}
+
+function resetTaskForm() {
+  $("editTaskId").value = "";
+  $("taskLabelInput").value = "";
+  $("taskSubInput").value = "";
+  $("taskWeightInput").value = "2";
+  $("formTaskHeading").textContent = "➕ إضافة مهمة جديدة";
+  $("saveTaskBtn").textContent = "إضافة المهمة";
+  $("cancelTaskEditBtn").style.display = "none";
+}
+
+$("cancelTaskEditBtn").onclick = resetTaskForm;
+
+$("saveTaskBtn").onclick = () => {
+  const label = $("taskLabelInput").value.trim();
+  const sub = $("taskSubInput").value.trim();
+  const w = Number($("taskWeightInput").value) || 1;
+  const editId = $("editTaskId").value;
+
+  if (!label) {
+    toast("يرجى كتابة اسم المهمة أولاً");
+    return;
+  }
+
+  const customKey = editingDay + "_" + editingWho;
+  let currentTasks = [...getTasksFor(editingDay - 1, editingWho)];
+
+  if (editId) {
+    // تعديل مهمة موجودة
+    const idx = currentTasks.findIndex(t => t.id === editId);
+    if (idx !== -1) {
+      currentTasks[idx] = { id: editId, label, sub, w };
+    }
+  } else {
+    // إضافة مهمة جديدة
+    const newId = "task_" + Date.now().toString(36) + "_" + Math.random().toString(36).substr(2, 4);
+    currentTasks.push({ id: newId, label, sub, w });
+  }
+
+  if (!state.customTasks) state.customTasks = {};
+  state.customTasks[customKey] = currentTasks;
+  state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
+
+  renderModalTaskList();
+  resetTaskForm();
+  toast("تم حفظ المهمة بنجاح ✓");
+  emitChange("tasks");
+};
+
+window.TaskEditor = {
+  editIndex(idx) {
+    const tasks = getTasksFor(editingDay - 1, editingWho);
+    const t = tasks[idx];
+    if (!t) return;
+    $("editTaskId").value = t.id;
+    $("taskLabelInput").value = t.label;
+    $("taskSubInput").value = t.sub || "";
+    $("taskWeightInput").value = String(t.w || 2);
+    $("formTaskHeading").textContent = "✏️ تعديل المهمة: " + t.label;
+    $("saveTaskBtn").textContent = "حفظ التعديل";
+    $("cancelTaskEditBtn").style.display = "inline-block";
+  },
+  deleteIndex(idx) {
+    if (!confirm("هل أنت متأكد من حذف هذه المهمة؟")) return;
+    const customKey = editingDay + "_" + editingWho;
+    let currentTasks = [...getTasksFor(editingDay - 1, editingWho)];
+    currentTasks.splice(idx, 1);
+    if (!state.customTasks) state.customTasks = {};
+    state.customTasks[customKey] = currentTasks;
+    state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
+    renderModalTaskList();
+    toast("تم حذف المهمة");
+    emitChange("tasks");
+  }
+};
+
+// نسخ المهام لباقي الأيام
+$("copyToAllDaysBtn").onclick = () => {
+  if (!confirm(`هل تريد نسخ مهام اليوم ${editingDay} لكل الأيام المتبقية (من اليوم ${editingDay + 1} إلى 30) لـ ${editingWho === "p1" ? state.meta.p1Name : state.meta.p2Name}؟`)) return;
+  const currentTasks = getTasksFor(editingDay - 1, editingWho);
+  if (!state.customTasks) state.customTasks = {};
+  for (let d = editingDay + 1; d <= 30; d++) {
+    const k = d + "_" + editingWho;
+    state.customTasks[k] = JSON.parse(JSON.stringify(currentTasks));
+  }
+  state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
+  toast("تم نسخ المهام للأيام القادمة بنجاح ✓");
+  emitChange("tasks");
+};
+
+// استعادة مهام اليوم الافتراضية
+$("resetDayTasksBtn").onclick = () => {
+  if (!confirm(`هل تريد استعادة المهام الأصلية لليوم ${editingDay}؟`)) return;
+  const customKey = editingDay + "_" + editingWho;
+  if (state.customTasks && state.customTasks[customKey]) {
+    delete state.customTasks[customKey];
+  }
+  state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
+  renderModalTaskList();
+  resetTaskForm();
+  toast("تمت استعادة المهام الافتراضية");
+  emitChange("tasks");
+};
+
+/* =========================================================================
+   7. كود التبادل الاحتياطي (WhatsApp Base64 Code Sync)
+   ========================================================================= */
+function packData() {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+}
+function unpackData(str) {
+  return JSON.parse(decodeURIComponent(escape(atob(str))));
+}
+
+function generateShareCode() {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify({
+      v: 2,
+      meta: state.meta,
+      done: state.done,
+      customTasks: state.customTasks,
+      sender: me,
+      t: Date.now()
+    }))));
+  } catch (e) {
+    return "";
+  }
+}
+
+function applyShareCode(raw) {
+  try {
+    const str = (raw || "").trim();
+    if (!str) return "يرجى لصق الكود أولاً";
+    const data = unpackData(str);
+    if (!data || !data.meta) return "الكود غير صالح";
+    if (data.meta) state.meta = Object.assign(state.meta, data.meta);
+    if (data.done) state.done = Object.assign(state.done, data.done);
+    if (data.customTasks) state.customTasks = Object.assign(state.customTasks || {}, data.customTasks);
+    persistLocal();
+    renderAll();
+    emitChange("codeApplied");
+    return "تم استيراد البيانات والمزامنة بنجاح ✓";
+  } catch (e) {
+    return "خطأ في قراءة الكود";
+  }
+}
+
+$("copyCodeSyncBtn").onclick = () => {
+  const code = generateShareCode();
+  $("codeSyncOutput").value = code;
+  $("codeSyncOutput").select();
+  navigator.clipboard.writeText(code).then(() => {
+    toast("تم نسخ كود المزامنة — أرسله عبر الواتساب");
+  }).catch(() => {
+    toast("تم تحديد الكود — اضغط نسخ");
+  });
+};
+
+$("applyCodeSyncBtn").onclick = () => {
+  const res = applyShareCode($("codeSyncInput").value);
+  toast(res);
+  $("codeSyncInput").value = "";
+};
+
+/* =========================================================================
+   8. نوافذ الإعدادات والـ Firebase
+   ========================================================================= */
+$("openSettingsBtn").onclick = () => openSettingsModal();
+$("syncStatus").onclick = () => openSettingsModal();
+$("openCodeSyncBtn").onclick = () => {
+  openSettingsModal();
+  $("codeSyncOutput").value = generateShareCode();
+};
+$("closeSettingsModalBtn").onclick = () => $("settingsModal").classList.remove("open");
+$("closeSettingsFootBtn").onclick = () => $("settingsModal").classList.remove("open");
+
+function openSettingsModal() {
+  const cfg = localStorage.getItem("duel30.firebaseConfig") || "";
+  $("firebaseConfigInput").value = cfg;
+  $("firebaseRoomInput").value = activeRoom;
+  $("codeSyncOutput").value = generateShareCode();
+  $("settingsModal").classList.add("open");
+}
+
+$("changeRoomBtn").onclick = () => {
+  const newRoom = $("firebaseRoomInput").value.trim();
+  if (newRoom && newRoom !== activeRoom) {
+    activeRoom = newRoom;
+    localStorage.setItem("duel30.firebaseRoom", activeRoom);
+    toast("تم تغيير الغرفة — جاري إعادة الاتصال...");
+    setTimeout(() => {
+      window.location.search = "?room=" + encodeURIComponent(activeRoom);
+    }, 600);
+  }
+};
+
+$("saveFirebaseConfigBtn").onclick = () => {
+  const cfgRaw = $("firebaseConfigInput").value.trim();
+  if (cfgRaw) {
+    try {
+      const parsed = JSON.parse(cfgRaw);
+      localStorage.setItem("duel30.firebaseConfig", JSON.stringify(parsed));
+      toast("تم حفظ إعدادات Firebase — جاري إعادة الاتصال...");
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      toast("صيغة الـ JSON غير صحيحة — تأكد من نسخ الكائن كاملاً");
+    }
+  } else {
+    toast("يرجى لصق كود firebaseConfig أولاً");
+  }
+};
+
+$("clearFirebaseConfigBtn").onclick = () => {
+  if (confirm("هل تريد حذف إعدادات Firebase والاعتماد على المزامنة السحابية المدمجة؟")) {
+    localStorage.removeItem("duel30.firebaseConfig");
+    toast("تم حذف الإعدادات");
+    setTimeout(() => location.reload(), 600);
+  }
+};
+
+// البدء الأولي
+renderAll();
+
+/* واجهة الربط العالمية لنظام المزامنة */
+window.AppSync = {
+  getState: () => state,
+  applyRemoteState: (remote) => {
+    if (!remote) return;
+    let changed = false;
+    if (remote.meta) {
+      state.meta = Object.assign(state.meta, remote.meta);
+      changed = true;
+    }
+    if (remote.done) {
+      state.done = Object.assign(state.done, remote.done);
+      changed = true;
+    }
+    if (remote.customTasks) {
+      state.customTasks = Object.assign(state.customTasks || {}, remote.customTasks);
+      changed = true;
+    }
+    if (changed) {
+      persistLocal();
+      renderAll();
+    }
+  },
+  onLocalChange: (cb) => {
+    changeListeners.push(cb);
+  },
+  setStatus: (type, text) => {
+    const el = $("syncStatus");
+    el.className = "sync " + type;
+    $("syncTxt").textContent = text;
+  },
+  toast: toast
+};
+</script>
+
+<!-- =========================================================================
+   9. محرك المزامنة اللحظية الفورية المزدوج (Cloud MQTT + Firebase)
+   ========================================================================= -->
+<script>
+(function initZeroConfigSync() {
+  const S = window.AppSync;
+  const clientId = "client_" + Math.random().toString(36).substr(2, 9);
+  const topic = "duel30_v2/" + activeRoom;
+
+  try {
+    if (typeof mqtt !== "undefined") {
+      const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", {
+        clientId: clientId,
+        clean: true,
+        keepalive: 30
+      });
+
+      client.on("connect", () => {
+        client.subscribe(topic + "/#", (err) => {
+          if (!err) {
+            S.setStatus("live", "🟢 متصل سحابياً (مزامنة حية)");
+            // بث الحالة الحالية كتحية لتبادل التحديثات
+            broadcastLocalState();
+          }
+        });
+      });
+
+      client.on("message", (t, msg) => {
+        try {
+          const payload = JSON.parse(msg.toString());
+          if (payload && payload.senderId !== clientId) {
+            S.applyRemoteState(payload.data);
+            if (payload.event === "toggle") {
+              S.toast("تحديث جديد من الطرف الثاني ⚡");
+            }
+          }
+        } catch (e) {
+          console.warn("MQTT parse error:", e);
+        }
+      });
+
+      client.on("error", () => {
+        S.setStatus("local", "وضع غير متصل — حفظ محلي");
+      });
+
+      function broadcastLocalState(event) {
+        if (client.connected) {
+          const data = {
+            senderId: clientId,
+            event: event || "sync",
+            timestamp: Date.now(),
+            data: {
+              meta: S.getState().meta,
+              done: S.getState().done,
+              customTasks: S.getState().customTasks
+            }
+          };
+          client.publish(topic + "/state", JSON.stringify(data), { qos: 0, retain: false });
+        }
+      }
+
+      let syncDebounce = null;
+      S.onLocalChange((reason) => {
+        clearTimeout(syncDebounce);
+        syncDebounce = setTimeout(() => {
+          broadcastLocalState(reason);
+        }, 150);
+      });
+    }
+  } catch (e) {
+    console.warn("Zero-config sync init warning:", e);
+  }
+})();
+</script>
+
+<!-- Firebase Module (يتم تفعيله إذا توفرت إعدادات Firebase) -->
+<script type="module">
+async function checkAndInitFirebase() {
+  let config = null;
+  const S = window.AppSync;
+
+  try {
+    const stored = localStorage.getItem("duel30.firebaseConfig");
+    if (stored) config = JSON.parse(stored);
+  } catch (e) {}
+
+  if (!config || !config.databaseURL) return;
+
+  try {
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+    const { getDatabase, ref, onValue, update } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
+
+    const app = initializeApp(config);
+    const db = getDatabase(app);
+    const room = activeRoom;
+
+    S.setStatus("live", "🟢 متصل بقاعدة بيانات Firebase");
+    S.toast("تم الاتصال بـ Firebase والمزامنة جاهزة ✓");
+
+    onValue(ref(db, room), snap => {
+      const val = snap.val();
+      if (val) {
+        S.applyRemoteState({
+          meta: val.meta,
+          done: val.done,
+          customTasks: val.tasks
+        });
+      }
+    });
+
+    let fbSaveTimer = null;
+    S.onLocalChange(() => {
+      clearTimeout(fbSaveTimer);
+      fbSaveTimer = setTimeout(() => {
+        const state = S.getState();
+        update(ref(db, room), {
+          meta: state.meta,
+          done: state.done,
+          tasks: state.customTasks || {}
+        }).catch(err => console.error("Firebase update err:", err));
+      }, 300);
+    });
+
+  } catch (err) {
+    console.error("Firebase custom error:", err);
+  }
+}
+
+checkAndInitFirebase();
+</script>
+
+</body>
+</html>
