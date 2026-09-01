@@ -604,7 +604,8 @@ const DEFAULT_DAYS = [
 /* =========================================================================
    2. إدارة الحالة والتخزين المحلي + المهام المخصصة
    ========================================================================= */
-const LS_KEY = "duel30.v2";
+const LEGACY_LS_KEY = "duel30.v2";
+let LS_KEY = LEGACY_LS_KEY;
 let state = {
   meta: { p1Name: "محمد", p2Name: "رسل", t1: 0, t2: 0, theme: "auto" },
   done: {},        // done["05_p1"] = { taskId: true }
@@ -629,6 +630,7 @@ const defaultRoom = "mhmdtaqi_challenge_2026_c4b8e2";
 const savedRoom = localStorage.getItem("duel30.firebaseRoom");
 let activeRoom = urlParams.get("room") || (!savedRoom || savedRoom === legacyDefaultRoom ? defaultRoom : savedRoom);
 localStorage.setItem("duel30.firebaseRoom", activeRoom);
+LS_KEY = "duel30.v3." + encodeURIComponent(activeRoom);
 
 function $(id) { return document.getElementById(id); }
 function num(n) { return String(n); }
@@ -650,8 +652,13 @@ const TODAY_IDX = calculateTodayIndex();
 currentDayIdx = TODAY_IDX;
 
 // استرجاع البيانات المخزنة محلياً
+let migratedLegacyState = false;
 try {
-  const saved = localStorage.getItem(LS_KEY);
+  // ننقل بيانات النسخة القديمة مرة واحدة إلى الغرفة الأساسية فقط.
+  const roomSaved = localStorage.getItem(LS_KEY);
+  const legacySaved = activeRoom === defaultRoom ? localStorage.getItem(LEGACY_LS_KEY) : null;
+  const saved = roomSaved || legacySaved;
+  migratedLegacyState = !roomSaved && !!legacySaved;
   if (saved) {
     const parsed = JSON.parse(saved);
     if (parsed.meta) state.meta = Object.assign(state.meta, parsed.meta);
@@ -662,6 +669,7 @@ try {
   console.warn("Local storage error:", e);
 }
 DuelSyncCore.ensureSyncState(state, syncWriterId);
+if (migratedLegacyState) localStorage.setItem(LS_KEY, JSON.stringify(state));
 
 function persistLocal() {
   try {
