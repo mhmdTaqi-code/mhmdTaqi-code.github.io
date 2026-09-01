@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@300;400;600;700&display=swap">
 <!-- MQTT.js for instant zero-config real-time synchronization -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.5.0/mqtt.min.js"></script>
+<script src="sync-core.js"></script>
 <style>
 :root{
   --ground:#ECEEF1; --surface:#FFFFFF; --surface-2:#F4F6F8; --line:#D6DAE0; --line-soft:#E4E7EC;
@@ -614,9 +615,19 @@ let me = null;
 let currentDayIdx = 0;
 let changeListeners = [];
 
+let deviceId = localStorage.getItem("duel30.deviceId");
+if (!deviceId) {
+  deviceId = "device_" + crypto.getRandomValues(new Uint32Array(2)).join("_");
+  localStorage.setItem("duel30.deviceId", deviceId);
+}
+const syncWriterId = deviceId + "_" + Math.random().toString(36).slice(2, 9);
+
 // استخراج اسم الغرفة من الرابط (URL param: ?room=...)
 const urlParams = new URLSearchParams(window.location.search);
-let activeRoom = urlParams.get("room") || localStorage.getItem("duel30.firebaseRoom") || "duel_muhammad_rusul_2026";
+const legacyDefaultRoom = "duel_muhammad_rusul_2026";
+const defaultRoom = "mhmdtaqi_challenge_2026_c4b8e2";
+const savedRoom = localStorage.getItem("duel30.firebaseRoom");
+let activeRoom = urlParams.get("room") || (!savedRoom || savedRoom === legacyDefaultRoom ? defaultRoom : savedRoom);
 localStorage.setItem("duel30.firebaseRoom", activeRoom);
 
 function $(id) { return document.getElementById(id); }
@@ -650,11 +661,20 @@ try {
 } catch (e) {
   console.warn("Local storage error:", e);
 }
+DuelSyncCore.ensureSyncState(state, syncWriterId);
 
 function persistLocal() {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
   } catch (e) {}
+}
+
+function markShared(recordKey, who) {
+  const now = Date.now();
+  if (who === "p1" || who === "p2") {
+    state.meta[who === "p1" ? "t1" : "t2"] = now;
+  }
+  DuelSyncCore.touch(state, recordKey, syncWriterId, now);
 }
 
 function key(dayNum, who) {
@@ -669,7 +689,7 @@ function doneFor(dayNum, who) {
 function getTasksFor(dayIdx, who) {
   const dayNum = dayIdx + 1;
   const customKey = dayNum + "_" + who;
-  if (state.customTasks && state.customTasks[customKey] && state.customTasks[customKey].length > 0) {
+  if (state.customTasks && Object.prototype.hasOwnProperty.call(state.customTasks, customKey) && Array.isArray(state.customTasks[customKey])) {
     return state.customTasks[customKey];
   }
   return (DEFAULT_DAYS[dayIdx] && DEFAULT_DAYS[dayIdx][who]) ? DEFAULT_DAYS[dayIdx][who] : [];
@@ -848,21 +868,16 @@ function toggleTask(who, taskId, targetEl) {
   const dayNum = currentDayIdx + 1;
   const k = key(dayNum, who);
   const m = state.done[k] || (state.done[k] = {});
-  let on;
-  if (m[taskId]) {
-    delete m[taskId];
-    on = false;
-  } else {
-    m[taskId] = true;
-    on = true;
-  }
+  const on = !m[taskId];
+  // نخزن false كتعديل صريح حتى ينتقل إلغاء التأشير لبقية الأجهزة.
+  m[taskId] = on;
   if (targetEl) {
     targetEl.classList.toggle("done", on);
     targetEl.setAttribute("aria-pressed", String(on));
   } else {
     renderAll();
   }
-  state.meta[who === "p1" ? "t1" : "t2"] = Date.now();
+  markShared(`done:${k}:${taskId}`, who);
   refreshScores();
   emitChange("toggle");
 }
@@ -904,7 +919,7 @@ function renameParticipant(who) {
   v = v.trim().slice(0, 20);
   if (!v) return;
   state.meta[k] = v;
-  state.meta[who === "p1" ? "t1" : "t2"] = Date.now();
+  markShared(`meta:${k}`, who);
   renderAll();
   emitChange("rename");
 }
@@ -1083,7 +1098,7 @@ $("saveTaskBtn").onclick = () => {
 
   if (!state.customTasks) state.customTasks = {};
   state.customTasks[customKey] = currentTasks;
-  state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
+  markShared(`tasks:${customKey}`, editingWho);
 
   renderModalTaskList();
   resetTaskForm();
@@ -1111,7 +1126,7 @@ window.TaskEditor = {
     currentTasks.splice(idx, 1);
     if (!state.customTasks) state.customTasks = {};
     state.customTasks[customKey] = currentTasks;
-    state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
+    markShared(`tasks:${customKey}`, editingWho);
     renderModalTaskList();
     toast("تم حذف المهمة");
     emitChange("tasks");
@@ -1126,8 +1141,8 @@ $("copyToAllDaysBtn").onclick = () => {
   for (let d = editingDay + 1; d <= 30; d++) {
     const k = d + "_" + editingWho;
     state.customTasks[k] = JSON.parse(JSON.stringify(currentTasks));
+    markShared(`tasks:${k}`, editingWho);
   }
-  state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
   toast("تم نسخ المهام للأيام القادمة بنجاح ✓");
   emitChange("tasks");
 };
@@ -1136,10 +1151,10 @@ $("copyToAllDaysBtn").onclick = () => {
 $("resetDayTasksBtn").onclick = () => {
   if (!confirm(`هل تريد استعادة المهام الأصلية لليوم ${editingDay}؟`)) return;
   const customKey = editingDay + "_" + editingWho;
-  if (state.customTasks && state.customTasks[customKey]) {
-    delete state.customTasks[customKey];
-  }
-  state.meta[editingWho === "p1" ? "t1" : "t2"] = Date.now();
+  if (!state.customTasks) state.customTasks = {};
+  // null علامة حذف متزامنة، وليست مجرد حذف محلي يضيع عند الدمج.
+  state.customTasks[customKey] = null;
+  markShared(`tasks:${customKey}`, editingWho);
   renderModalTaskList();
   resetTaskForm();
   toast("تمت استعادة المهام الافتراضية");
@@ -1159,10 +1174,8 @@ function unpackData(str) {
 function generateShareCode() {
   try {
     return btoa(unescape(encodeURIComponent(JSON.stringify({
-      v: 2,
-      meta: state.meta,
-      done: state.done,
-      customTasks: state.customTasks,
+      v: 3,
+      data: DuelSyncCore.exportSharedState(state, syncWriterId),
       sender: me,
       t: Date.now()
     }))));
@@ -1176,10 +1189,9 @@ function applyShareCode(raw) {
     const str = (raw || "").trim();
     if (!str) return "يرجى لصق الكود أولاً";
     const data = unpackData(str);
-    if (!data || !data.meta) return "الكود غير صالح";
-    if (data.meta) state.meta = Object.assign(state.meta, data.meta);
-    if (data.done) state.done = Object.assign(state.done, data.done);
-    if (data.customTasks) state.customTasks = Object.assign(state.customTasks || {}, data.customTasks);
+    const remote = data && data.data ? data.data : data;
+    if (!remote || !remote.meta) return "الكود غير صالح";
+    DuelSyncCore.mergeState(state, remote, syncWriterId);
     persistLocal();
     renderAll();
     emitChange("codeApplied");
@@ -1268,25 +1280,16 @@ renderAll();
 /* واجهة الربط العالمية لنظام المزامنة */
 window.AppSync = {
   getState: () => state,
+  getSharedState: () => DuelSyncCore.exportSharedState(state, syncWriterId),
+  hasSharedData: () => DuelSyncCore.hasSharedData(state, syncWriterId),
   applyRemoteState: (remote) => {
-    if (!remote) return;
-    let changed = false;
-    if (remote.meta) {
-      state.meta = Object.assign(state.meta, remote.meta);
-      changed = true;
-    }
-    if (remote.done) {
-      state.done = Object.assign(state.done, remote.done);
-      changed = true;
-    }
-    if (remote.customTasks) {
-      state.customTasks = Object.assign(state.customTasks || {}, remote.customTasks);
-      changed = true;
-    }
-    if (changed) {
+    const result = DuelSyncCore.mergeState(state, remote, syncWriterId);
+    if (result.changed) {
       persistLocal();
       renderAll();
+      if ($("taskEditorModal").classList.contains("open")) renderModalTaskList();
     }
+    return result;
   },
   onLocalChange: (cb) => {
     changeListeners.push(cb);
@@ -1306,8 +1309,10 @@ window.AppSync = {
 <script>
 (function initZeroConfigSync() {
   const S = window.AppSync;
-  const clientId = "client_" + Math.random().toString(36).substr(2, 9);
-  const topic = "duel30_v2/" + activeRoom;
+  const clientId = "d30_" + Math.random().toString(36).slice(2, 16);
+  const snapshotTopic = "duel30_v3/" + encodeURIComponent(activeRoom) + "/snapshot";
+  let receivedSnapshot = false;
+  let mergePublishTimer = null;
 
   try {
     if (typeof mqtt !== "undefined") {
@@ -1318,11 +1323,18 @@ window.AppSync = {
       });
 
       client.on("connect", () => {
-        client.subscribe(topic + "/#", (err) => {
+        S.setStatus("local", "جاري تحميل آخر نسخة مشتركة...");
+        client.subscribe(snapshotTopic, { qos: 1 }, (err) => {
           if (!err) {
-            S.setStatus("live", "🟢 متصل سحابياً (مزامنة حية)");
-            // بث الحالة الحالية كتحية لتبادل التحديثات
-            broadcastLocalState();
+            // الجهاز الجديد لا يرسل حالته الفارغة. ينتظر النسخة المحتفظ بها أولاً.
+            setTimeout(() => {
+              if (!receivedSnapshot && S.hasSharedData()) {
+                broadcastLocalState("bootstrap");
+              }
+              S.setStatus("live", "🟢 متصل — البيانات محفوظة ومشتركة");
+            }, 1800);
+          } else {
+            S.setStatus("err", "تعذر فتح غرفة المزامنة");
           }
         });
       });
@@ -1331,9 +1343,15 @@ window.AppSync = {
         try {
           const payload = JSON.parse(msg.toString());
           if (payload && payload.senderId !== clientId) {
-            S.applyRemoteState(payload.data);
-            if (payload.event === "toggle") {
-              S.toast("تحديث جديد من الطرف الثاني ⚡");
+            receivedSnapshot = true;
+            const result = S.applyRemoteState(payload.data);
+            S.setStatus("live", "🟢 متصل — تمت المزامنة الآن");
+            if (result && result.localNewer) {
+              clearTimeout(mergePublishTimer);
+              mergePublishTimer = setTimeout(() => broadcastLocalState("merge"), 250 + Math.random() * 350);
+            }
+            if (payload.event === "toggle" || payload.event === "tasks" || payload.event === "rename") {
+              S.toast("وصل تحديث من الجهاز الثاني ⚡");
             }
           }
         } catch (e) {
@@ -1344,6 +1362,8 @@ window.AppSync = {
       client.on("error", () => {
         S.setStatus("local", "وضع غير متصل — حفظ محلي");
       });
+      client.on("offline", () => S.setStatus("local", "غير متصل — سنزامن عند عودة الإنترنت"));
+      client.on("reconnect", () => S.setStatus("local", "جاري إعادة الاتصال..."));
 
       function broadcastLocalState(event) {
         if (client.connected) {
@@ -1351,13 +1371,13 @@ window.AppSync = {
             senderId: clientId,
             event: event || "sync",
             timestamp: Date.now(),
-            data: {
-              meta: S.getState().meta,
-              done: S.getState().done,
-              customTasks: S.getState().customTasks
-            }
+            schemaVersion: 3,
+            data: S.getSharedState()
           };
-          client.publish(topic + "/state", JSON.stringify(data), { qos: 0, retain: false });
+          client.publish(snapshotTopic, JSON.stringify(data), { qos: 1, retain: true }, err => {
+            if (err) S.setStatus("err", "تعذر حفظ آخر تعديل سحابياً");
+            else S.setStatus("live", "🟢 تم حفظ آخر تعديل لكل الأجهزة");
+          });
         }
       }
 
@@ -1390,7 +1410,7 @@ async function checkAndInitFirebase() {
 
   try {
     const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-    const { getDatabase, ref, onValue, update } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
+    const { getDatabase, ref, onValue, set } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
 
     const app = initializeApp(config);
     const db = getDatabase(app);
@@ -1399,28 +1419,39 @@ async function checkAndInitFirebase() {
     S.setStatus("live", "🟢 متصل بقاعدة بيانات Firebase");
     S.toast("تم الاتصال بـ Firebase والمزامنة جاهزة ✓");
 
+    let fbSaveTimer = null;
+    const writeFirebaseSnapshot = () => {
+      const payload = JSON.stringify(S.getSharedState());
+      return set(ref(db, room + "/v3"), {
+        payload,
+        updatedAt: Date.now(),
+        schemaVersion: 3
+      }).catch(err => console.error("Firebase update err:", err));
+    };
+
     onValue(ref(db, room), snap => {
       const val = snap.val();
       if (val) {
-        S.applyRemoteState({
-          meta: val.meta,
-          done: val.done,
-          customTasks: val.tasks
-        });
+        let remote = null;
+        if (val.v3 && val.v3.payload) {
+          try { remote = JSON.parse(val.v3.payload); } catch (e) {}
+        }
+        if (!remote && (val.meta || val.done || val.tasks)) {
+          remote = { meta: val.meta, done: val.done, customTasks: val.tasks };
+        }
+        if (remote) {
+          const result = S.applyRemoteState(remote);
+          if (result && result.localNewer) {
+            clearTimeout(fbSaveTimer);
+            fbSaveTimer = setTimeout(writeFirebaseSnapshot, 350);
+          }
+        }
       }
     });
 
-    let fbSaveTimer = null;
     S.onLocalChange(() => {
       clearTimeout(fbSaveTimer);
-      fbSaveTimer = setTimeout(() => {
-        const state = S.getState();
-        update(ref(db, room), {
-          meta: state.meta,
-          done: state.done,
-          tasks: state.customTasks || {}
-        }).catch(err => console.error("Firebase update err:", err));
-      }, 300);
+      fbSaveTimer = setTimeout(writeFirebaseSnapshot, 300);
     });
 
   } catch (err) {
