@@ -849,7 +849,7 @@ function refreshScores() {
   let v;
   if (a.avg === 0 && b.avg === 0) {
     v = "لسّه ما بدت المبارزة — أشّر أول مهمة";
-  } else if (a.scoreTotal === b.scoreTotal) {
+  } else if (a.scoreTotal === b.scoreTotal || s1 === s2) {
     v = `تعادل <b>${num(s1)}% مقابل ${num(s2)}%</b> — الأيام الكاملة تفصل: ${num(a.perfect)} مقابل ${num(b.perfect)}`;
   } else {
     const winner = a.scoreTotal > b.scoreTotal ? state.meta.p1Name : state.meta.p2Name;
