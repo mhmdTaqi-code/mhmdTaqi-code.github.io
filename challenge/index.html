@@ -323,16 +323,16 @@ body{
         <button class="pname" id="name1" type="button" title="اضغط لتغيير الاسم">
           <span class="txt">محمد</span><span class="pen">تغيير</span>
         </button>
-        <div class="big" id="avg1">0<em>%</em></div>
-        <div class="meta" id="sub1">معدّل الشهر</div>
+        <div class="big" id="avg1">50<em>%</em></div>
+        <div class="meta" id="sub1">حصة من النتيجة الكلية</div>
       </div>
       <div class="vs">ضد</div>
       <div class="side b">
         <button class="pname" id="name2" type="button" title="اضغط لتغيير الاسم">
           <span class="pen">تغيير</span><span class="txt">رسل</span>
         </button>
-        <div class="big" id="avg2">0<em>%</em></div>
-        <div class="meta" id="sub2">معدّل الشهر</div>
+        <div class="big" id="avg2">50<em>%</em></div>
+        <div class="meta" id="sub2">حصة من النتيجة الكلية</div>
       </div>
     </div>
     <div class="tug">
@@ -426,7 +426,7 @@ body{
       </div>
       <div class="rcard">
         <h3>النتيجة نسبة مئوية</h3>
-        <p>النقاط المكتسبة ÷ مجموع نقاط اليوم. النسبة المئوية هي المقياس العادل للمقارنة حتى لو اختلف عدد مهام كل طرف.</p>
+        <p>النقاط المكتسبة ÷ مجموع نقاط اليوم. النسبة المئوية هي المقياس العادل للمقارنة حتى لو اختلف عدد مهام كل طرف. النتيجة الإجمالية في الأعلى هي حصة كل طرف من مجموع المبارزة، لذلك مجموع الحصتين دائمًا <b>100%</b>.</p>
       </div>
       <div class="rcard">
         <h3>اليوم المتروك = صفر</h3>
@@ -740,6 +740,7 @@ function summary(who) {
   }
   return {
     avg: elapsed ? Math.round(sum / elapsed) : 0,
+    scoreTotal: sum,
     perfect,
     streak,
     best
@@ -832,26 +833,27 @@ function refreshScores() {
   renderStrip("p2", $("strip2"));
 
   const a = summary("p1"), b = summary("p2");
-  $("avg1").innerHTML = num(a.avg) + '<em>%</em>';
-  $("avg2").innerHTML = num(b.avg) + '<em>%</em>';
-  $("sub1").textContent = "معدّل " + num(TODAY_IDX + 1) + " يوم";
-  $("sub2").textContent = "معدّل " + num(TODAY_IDX + 1) + " يوم";
-  $("stats1").innerHTML = `<span>سلسلة <b>${num(a.streak)}</b></span><span>أيام كاملة <b>${num(a.perfect)}</b></span>`;
-  $("stats2").innerHTML = `<span>سلسلة <b>${num(b.streak)}</b></span><span>أيام كاملة <b>${num(b.perfect)}</b></span>`;
+  const total = a.scoreTotal + b.scoreTotal;
+  const s1 = total ? Math.round((a.scoreTotal / total) * 100) : 50;
+  const s2 = 100 - s1;
+  $("avg1").innerHTML = num(s1) + '<em>%</em>';
+  $("avg2").innerHTML = num(s2) + '<em>%</em>';
+  $("sub1").textContent = "حصة من النتيجة الكلية";
+  $("sub2").textContent = "حصة من النتيجة الكلية";
+  $("stats1").innerHTML = `<span>معدّل الإنجاز <b>${num(a.avg)}%</b></span><span>سلسلة <b>${num(a.streak)}</b></span><span>أيام كاملة <b>${num(a.perfect)}</b></span>`;
+  $("stats2").innerHTML = `<span>معدّل الإنجاز <b>${num(b.avg)}%</b></span><span>سلسلة <b>${num(b.streak)}</b></span><span>أيام كاملة <b>${num(b.perfect)}</b></span>`;
 
-  const total = a.avg + b.avg;
-  const s1 = total ? Math.round((a.avg / total) * 100) : 50;
   $("tug1").style.width = s1 + "%";
-  $("tug2").style.width = (100 - s1) + "%";
+  $("tug2").style.width = s2 + "%";
 
   let v;
   if (a.avg === 0 && b.avg === 0) {
     v = "لسّه ما بدت المبارزة — أشّر أول مهمة";
-  } else if (a.avg === b.avg) {
-    v = `تعادل على <b>${num(a.avg)}%</b> — الأيام الكاملة تفصل: ${num(a.perfect)} مقابل ${num(b.perfect)}`;
+  } else if (a.scoreTotal === b.scoreTotal) {
+    v = `تعادل <b>${num(s1)}% مقابل ${num(s2)}%</b> — الأيام الكاملة تفصل: ${num(a.perfect)} مقابل ${num(b.perfect)}`;
   } else {
-    const winner = a.avg > b.avg ? state.meta.p1Name : state.meta.p2Name;
-    const gap = Math.abs(a.avg - b.avg);
+    const winner = a.scoreTotal > b.scoreTotal ? state.meta.p1Name : state.meta.p2Name;
+    const gap = Math.abs(s1 - s2);
     v = `<b>${esc(winner)}</b> متقدّم بـ<b>${num(gap)}</b> نقطة مئوية`;
   }
   $("verdict").innerHTML = v;
